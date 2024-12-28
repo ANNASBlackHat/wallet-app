@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { collection, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { DatePickerWithRange } from '@/components/date-range-picker'
+import { EnhancedDateRangePicker } from '@/components/enhanced-date-range-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, XAxis, YAxis, Bar } from 'recharts'
 import { AddExpenseDialog } from '@/components/add-expense-dialog'
@@ -193,9 +193,11 @@ export default function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight">Wallet AI App</h1>
         <div className="space-y-4 sm:space-y-0 sm:flex sm:flex-col md:flex-row md:justify-between md:items-center">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <DatePickerWithRange
+            <EnhancedDateRangePicker
               value={dateRange}
-              onChange={setDateRange}
+              onChange={(newRange) => {
+                setDateRange(newRange ? { from: newRange.from!, to: newRange.to! } : undefined)
+              }}
             />
             <Select
               value={selectedCategory}
