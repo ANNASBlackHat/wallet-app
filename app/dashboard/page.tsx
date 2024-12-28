@@ -7,7 +7,7 @@ import { db } from '@/lib/firebase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DatePickerWithRange } from '@/components/date-range-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, XAxis, YAxis, Bar } from 'recharts'
 import { AddExpenseDialog } from '@/components/add-expense-dialog'
 import { AuthGuard } from '@/components/auth-guard'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -33,6 +33,11 @@ interface SpendingData {
   date_created_millis: number
   spending: Spending[]
   summary?: string
+}
+
+interface MonthlySpending {
+  month: string;
+  total: number;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -150,6 +155,31 @@ export default function DashboardPage() {
 
   const averageSpending = totalSpending / filteredData.length
 
+  // Prepare monthly spending data
+  const monthlySpending = filteredData
+    .flatMap(data => ({
+      date: new Date(data.date_created_millis),
+      spending: data.spending.reduce((sum, item) => sum + Number(item.Total), 0)
+    }))
+    .reduce((acc, { date, spending }) => {
+      const monthKey = date.toLocaleString('default', { month: 'short', year: '2-digit' })
+      acc[monthKey] = (acc[monthKey] || 0) + spending
+      return acc
+    }, {} as Record<string, number>)
+
+  const monthlySpendingData: MonthlySpending[] = Object.entries(monthlySpending)
+    .map(([month, total]) => ({
+      month,
+      total
+    }))
+    .sort((a, b) => {
+      const [monthA, yearA] = a.month.split(' ')
+      const [monthB, yearB] = b.month.split(' ')
+      const dateA = new Date(`${monthA} 20${yearA}`)
+      const dateB = new Date(`${monthB} 20${yearB}`)
+      return dateA.getTime() - dateB.getTime()
+    })
+
   // Pagination
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE)
   const paginatedData = filteredData.slice(
@@ -186,30 +216,26 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Total Spending</CardTitle>
+              <CardTitle>Spending Overview</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {totalSpending.toLocaleString()} IDR
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Spending</p>
+                  <p className="text-2xl font-bold">{totalSpending.toLocaleString()} IDR</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Average Spending</p>
+                  <p className="text-2xl font-bold">{averageSpending.toLocaleString()} IDR</p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Average Spending</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {averageSpending.toLocaleString()} IDR
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="sm:col-span-2 lg:col-span-1">
             <CardHeader>
               <CardTitle>Spending by Category</CardTitle>
             </CardHeader>
@@ -232,6 +258,26 @@ export default function DashboardPage() {
                   <Tooltip formatter={(value) => `${Number(value).toLocaleString()} IDR`} />
                   <Legend />
                 </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="sm:col-span-2">
+            <CardHeader>
+              <CardTitle>Monthly Spending</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlySpendingData}>
+                  <XAxis dataKey="month" />
+                  <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`} />
+                  <Tooltip formatter={(value) => `${Number(value).toLocaleString()} IDR`} />
+                  <Bar dataKey="total" fill="#8884d8">
+                    {monthlySpendingData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
