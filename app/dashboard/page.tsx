@@ -184,9 +184,6 @@ export default function DashboardPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="mt-4 sm:mt-0">
-            <AddExpenseDialog onSuccessfulSubmit={fetchData} />
-          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -302,6 +299,7 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+        <AddExpenseDialog onSuccessfulSubmit={fetchData} />
       </div>
     </AuthGuard>
   )
