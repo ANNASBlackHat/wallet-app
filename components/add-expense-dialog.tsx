@@ -44,67 +44,168 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   const [isCameraReady, setIsCameraReady] = useState(false)
 
   const startRecording = useCallback(async () => {
+    console.log('Starting audio recording...')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        } 
+      })
+      console.log('Audio stream obtained:', stream.getTracks())
+      
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+          ? 'audio/webm;codecs=opus' 
+          : 'audio/mp4'
+      })
+      console.log('MediaRecorder created with mimeType:', recorder.mimeType)
+      
       setMediaRecorder(recorder)
-      setAudioChunks([])
-
+      const chunks: Blob[] = []
+      
       recorder.ondataavailable = (event) => {
+        console.log('Data available event:', event.data.size, 'bytes')
         if (event.data.size > 0) {
+          chunks.push(event.data)
           setAudioChunks(current => [...current, event.data])
         }
       }
 
       recorder.onstop = () => {
-        const blob = new Blob(audioChunks, { type: 'audio/wav' })
+        console.log('Recording stopped, processing audio chunks...')
+        console.log('Number of audio chunks:', chunks.length)
+        
+        if (chunks.length === 0) {
+          console.error('No audio chunks recorded')
+          toast({
+            title: "Error",
+            description: "No audio was recorded. Please try again.",
+            variant: "destructive"
+          })
+          return
+        }
+        
+        const blob = new Blob(chunks, { type: recorder.mimeType })
+        console.log('Created audio blob:', blob.size, 'bytes, type:', blob.type)
+        
+        if (blob.size === 0) {
+          console.error('Created blob is empty')
+          toast({
+            title: "Error",
+            description: "Recording failed. Please try again.",
+            variant: "destructive"
+          })
+          return
+        }
+        
         setAudioBlob(blob)
         const url = URL.createObjectURL(blob)
+        console.log('Created blob URL:', url)
         setAudioUrl(url)
       }
 
-      recorder.start()
+      // Request data every 1 second
+      recorder.start(1000)
+      console.log('Started recording with 1 second time slices')
       setIsListening(true)
       toast({
         title: "Recording started",
         description: "Speak clearly into your microphone"
       })
     } catch (error) {
-      console.error('Error accessing microphone:', error)
+      console.error('Detailed error accessing microphone:', error)
       toast({
         title: "Error",
         description: "Could not access microphone. Please check your permissions.",
         variant: "destructive"
       })
     }
-  }, [audioChunks, toast])
+  }, [toast])
 
   const stopRecording = useCallback(() => {
+    console.log('Stopping recording...')
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop()
-      mediaRecorder.stream.getTracks().forEach(track => track.stop())
-      setIsListening(false)
-      toast({
-        title: "Recording completed",
-        description: "You can now review your recording"
-      })
+      console.log('Current recorder state:', mediaRecorder.state)
+      
+      // Request final data
+      mediaRecorder.requestData()
+      
+      // Stop the recorder after a short delay to ensure we get the last chunk
+      setTimeout(() => {
+        mediaRecorder.stop()
+        console.log('Stopping audio tracks...')
+        mediaRecorder.stream.getTracks().forEach(track => {
+          console.log('Stopping track:', track.kind, track.label)
+          track.stop()
+        })
+        setIsListening(false)
+        toast({
+          title: "Recording completed",
+          description: "You can now review your recording"
+        })
+      }, 100)
+    } else {
+      console.log('No active recording to stop')
     }
   }, [mediaRecorder, toast])
 
   const playRecording = useCallback(() => {
-    if (audioUrl) {
-      const audio = new Audio(audioUrl)
-      audio.play()
+    console.log('Attempting to play recording...')
+    if (audioUrl && audioBlob && audioBlob.size > 0) {
+      console.log('Using audio URL:', audioUrl)
+      const audio = new Audio()
+      
+      audio.onerror = (e) => {
+        console.error('Audio playback error:', e)
+        toast({
+          title: "Error",
+          description: "Failed to play recording",
+          variant: "destructive"
+        })
+      }
+      
+      audio.onloadedmetadata = () => {
+        console.log('Audio metadata loaded:', {
+          duration: audio.duration,
+          readyState: audio.readyState
+        })
+      }
+      
+      audio.oncanplay = () => {
+        console.log('Audio can play, starting playback...')
+        audio.play().catch(err => {
+          console.error('Play error:', err)
+          toast({
+            title: "Error",
+            description: "Failed to play recording. Please try recording again.",
+            variant: "destructive"
+          })
+        })
+      }
+      
+      audio.src = audioUrl
+    } else {
+      console.log('No valid audio available to play')
+      toast({
+        title: "Error",
+        description: "No valid recording found",
+        variant: "destructive"
+      })
     }
-  }, [audioUrl])
+  }, [audioUrl, audioBlob, toast])
 
   const clearRecording = useCallback(() => {
+    console.log('Clearing recording...')
     if (audioUrl) {
+      console.log('Revoking URL:', audioUrl)
       URL.revokeObjectURL(audioUrl)
     }
     setAudioUrl(null)
     setAudioBlob(null)
     setAudioChunks([])
+    console.log('Recording cleared')
   }, [audioUrl])
 
   const handleImageSelect = (file: File) => {
@@ -143,7 +244,10 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
       } else if (audioBlob) {
         formData.append('type', 'audio')
         // Send audio as a file
-        const audioFile = new File([audioBlob], 'voice-note.wav', { type: 'audio/wav' })
+        const extension = mediaRecorder?.mimeType.includes('webm') ? 'webm' : 'mp4'
+        const audioFile = new File([audioBlob], `voice-note.${extension}`, { 
+          type: mediaRecorder?.mimeType || 'audio/webm' 
+        })
         formData.append('audio', audioFile)
       } else if (selectedImage) {
         formData.append('type', 'image')
