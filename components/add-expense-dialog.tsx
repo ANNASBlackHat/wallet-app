@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -38,6 +38,9 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [videoStream, setVideoStream] = useState<MediaStream | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const startRecording = useCallback(async () => {
     try {
@@ -181,6 +184,72 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
     }
   }
 
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } // Use back camera if available
+      })
+      setVideoStream(stream)
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
+
+      toast({
+        title: "Camera",
+        description: "Camera started. Click 'Capture' when ready."
+      })
+    } catch (err) {
+      console.error('Camera error:', err)
+      toast({
+        title: "Error",
+        description: "Could not access camera",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const stopCamera = () => {
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop())
+      setVideoStream(null)
+      if (videoRef.current) {
+        videoRef.current.srcObject = null
+      }
+    }
+  }
+
+  const captureImage = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      
+      // Set canvas size to match video
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      
+      // Draw video frame to canvas
+      const ctx = canvas.getContext('2d')
+      ctx?.drawImage(video, 0, 0)
+      
+      // Convert to file
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' })
+          handleImageSelect(file)
+          stopCamera()
+        }
+      }, 'image/jpeg')
+    }
+  }
+
+  // Clean up camera on unmount
+  useEffect(() => {
+    return () => {
+      stopCamera()
+    }
+  }, [])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -272,28 +341,10 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => {
-                    navigator.mediaDevices.getUserMedia({ video: true })
-                      .then(stream => {
-                        // Here you would implement camera capture
-                        stream.getTracks().forEach(track => track.stop())
-                        toast({
-                          title: "Camera",
-                          description: "Camera capture will be implemented"
-                        })
-                      })
-                      .catch(err => {
-                        console.error('Camera error:', err)
-                        toast({
-                          title: "Error",
-                          description: "Could not access camera",
-                          variant: "destructive"
-                        })
-                      })
-                  }}
+                  onClick={videoStream ? stopCamera : startCamera}
                 >
                   <Camera className="mr-2 h-4 w-4" />
-                  Camera
+                  {videoStream ? 'Stop Camera' : 'Camera'}
                 </Button>
                 <Button
                   type="button"
@@ -317,6 +368,29 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
                 </Button>
               </div>
 
+              {videoStream && !imagePreview && (
+                <div className="space-y-2">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="h-full w-full object-cover"
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="absolute bottom-2 left-1/2 -translate-x-1/2"
+                      onClick={captureImage}
+                    >
+                      Capture
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {imagePreview && (
                 <div className="space-y-2">
                   <div className="relative aspect-video w-full overflow-hidden rounded-lg border">
@@ -324,7 +398,7 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
                     <img
                       src={imagePreview}
                       alt="Selected"
-                      className="object-cover"
+                      className="h-full w-full object-cover"
                     />
                     <Button
                       type="button"
