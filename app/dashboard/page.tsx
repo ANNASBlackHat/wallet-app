@@ -44,7 +44,7 @@ const ITEMS_PER_PAGE = 10;
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
 export default function DashboardPage() {
-  const { user, phone, loading } = useAuth()
+  const { user, userId, loading } = useAuth()
   const [spendingData, setSpendingData] = useState<SpendingData[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>()
@@ -55,20 +55,20 @@ export default function DashboardPage() {
   const { toast } = useToast()
 
   const fetchData = useCallback(async () => {
-    if (!phone) {
+    if (!userId) {
       setIsLoading(false)
       return
     }
 
     try {
-      const spendingRef = collection(db, `wallet/${phone}/spending`)
+      const spendingRef = collection(db, `wallet/${userId}/spending`)
       const q = query(spendingRef, orderBy('date_created_millis', 'desc'))
       const querySnapshot = await getDocs(q)
       
-      const data = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data() as SpendingData,
-        spending: Array.isArray(doc.data().spending) ? doc.data().spending : []
+      const data = querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data() as SpendingData,
+        spending: Array.isArray(docSnap.data().spending) ? docSnap.data().spending : []
       }))
 
       setSpendingData(data)
@@ -78,7 +78,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [phone])
+  }, [userId])
 
   useEffect(() => {
     if (!loading && user) {
@@ -89,16 +89,16 @@ export default function DashboardPage() {
   }, [user, loading, fetchData])
 
   const handleDelete = async (id: string) => {
-    if (!phone) return
+    if (!userId) return
 
     setDeletingId(id)
     try {
-      await deleteDoc(doc(db, `wallet/${phone}/spending`, id))
+      await deleteDoc(doc(db, `wallet/${userId}/spending`, id))
       toast({
         title: 'Success',
         description: 'Expense deleted successfully'
       })
-      fetchData() // Refresh data after deletion
+      fetchData()
     } catch (error) {
       console.error('Error deleting document:', error)
       toast({

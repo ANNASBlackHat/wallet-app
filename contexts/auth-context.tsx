@@ -3,13 +3,13 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth'
 import { auth, googleProvider } from '@/lib/firebase'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  phone: string | null
+  userId: string | null
   error: Error | null
   signIn: () => Promise<void>
   signOut: () => Promise<void>
@@ -18,7 +18,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
-  phone: null,
+  userId: null,
   error: null,
   signIn: async () => {},
   signOut: async () => {}
@@ -27,31 +27,80 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   console.log('AuthProvider initialized')
   const [user, setUser] = useState<User | null>(null)
-  const [phone, setPhone] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+
+  const findOrCreateUser = async (email: string) => {
+    if (!email) return null;
+    
+    try {
+      console.log('🔍 Looking for user with email:', email)
+      
+      // First, try to find user by email
+      const usersRef = collection(db, 'wallet')
+      const q = query(usersRef, where('email', '==', email))
+      const querySnapshot = await getDocs(q)
+      
+      if (!querySnapshot.empty) {
+        // Log all found documents (to debug duplicates)
+        querySnapshot.docs.forEach((doc, index) => {
+          console.log(`📄 Found document ${index + 1}:`, {
+            id: doc.id,
+            email: doc.data().email,
+            created_at: doc.data().created_at
+          })
+        })
+        
+        // Use the first document found
+        const existingUser = querySnapshot.docs[0]
+        console.log('✅ Using existing user:', existingUser.id)
+        return existingUser.id
+      }
+
+      console.log('❌ No existing user found, creating new user...')
+      
+      // Double check one more time before creating
+      const doubleCheckSnapshot = await getDocs(q)
+      if (!doubleCheckSnapshot.empty) {
+        const existingUser = doubleCheckSnapshot.docs[0]
+        console.log('⚠️ User was created by another process, using existing:', existingUser.id)
+        return existingUser.id
+      }
+
+      // Create new user with auto-generated ID
+      const newUserRef = doc(collection(db, 'wallet'))
+      const userData = {
+        email: email,
+        created_at: new Date().toISOString()
+      }
+      
+      console.log('📝 Creating new user:', {
+        id: newUserRef.id,
+        path: `wallet/${newUserRef.id}`,
+        ...userData
+      })
+      
+      await setDoc(newUserRef, userData)
+      console.log('✨ User creation completed, ID:', newUserRef.id)
+      return newUserRef.id
+      
+    } catch (error) {
+      console.error('❌ Error in findOrCreateUser:', error)
+      return null
+    }
+  }
 
   useEffect(() => {
     console.log('Setting up auth state listener')
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('Auth state changed:', user ? 'User logged in' : 'User logged out')
       setUser(user)
-      if (user) {
-        try {
-          const walletRef = doc(db, 'wallet', '6285742257881')
-          const walletDoc = await getDoc(walletRef)
-          if (walletDoc.exists() && walletDoc.data().email === user.email) {
-            console.log('User email found in wallet collection')
-            setPhone('6285742257881')
-          } else {
-            console.log('User email not found in wallet collection')
-            setPhone(null)
-          }
-        } catch (error) {
-          console.error('Error checking wallet document:', error)
-        }
+      if (user?.email) {
+        const userId = await findOrCreateUser(user.email)
+        setUserId(userId)
       } else {
-        setPhone(null)
+        setUserId(null)
       }
       setLoading(false)
     })
@@ -65,15 +114,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Initiating Google sign-in process...')
       const result = await signInWithPopup(auth, googleProvider)
       console.log('Sign-in successful:', result.user)
-      // Check if the user's email exists in the wallet collection
-      const walletRef = doc(db, 'wallet', '6285742257881')
-      const walletDoc = await getDoc(walletRef)
-      if (walletDoc.exists() && walletDoc.data().email === result.user.email) {
-        console.log('User email found in wallet collection')
-        setPhone('6285742257881')
-      } else {
-        console.log('User email not found in wallet collection')
-        setPhone(null)
+      
+      if (result.user?.email) {
+        const userId = await findOrCreateUser(result.user.email)
+        setUserId(userId)
       }
     } catch (error) {
       console.error('Error signing in:', error)
@@ -85,21 +129,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleSignOut = useCallback(async () => {
     try {
       await signOut(auth)
-      setPhone(null)
+      setUserId(null)
       console.log('User signed out successfully')
     } catch (error) {
       console.error('Error signing out:', error)
     }
   }, [])
 
-  console.log('AuthProvider current state:', { user: user?.email, phone, loading, error })
+  console.log('AuthProvider current state:', { user: user?.email, userId, loading, error })
 
   return (
     <AuthContext.Provider
       value={{
         user,
         loading,
-        phone,
+        userId,
         error,
         signIn: handleSignIn,
         signOut: handleSignOut

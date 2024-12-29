@@ -20,19 +20,21 @@ interface AddExpenseDialogProps {
 }
 
 export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) {
-  const { phone } = useAuth()
+  const { userId } = useAuth()
   const { toast } = useToast()
   const [text, setText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [open, setOpen] = useState(false)
 
   const handleSubmit = async (formData: FormData) => {
-    if (!phone) return
+    if (!userId) return
     
     setIsLoading(true)
+    formData.append('user_id', userId)
+    
     console.log('Submitting expense:', {
       text: formData.get('text'),
-      phone
+      userId: formData.get('userId')
     })
     
     try {
