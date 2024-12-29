@@ -3,7 +3,23 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth'
 import { auth, googleProvider } from '@/lib/firebase'
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore'
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs,
+  writeBatch,
+  runTransaction,
+  DocumentReference,
+  QuerySnapshot,
+  DocumentData,
+  deleteDoc,
+  orderBy,
+  limit
+} from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 
 interface AuthContextType {
@@ -31,20 +47,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const findOrCreateUser = async (email: string) => {
+  const cleanupDuplicateUsers = async (email: string): Promise<void> => {
+    try {
+      console.log('🧹 Starting cleanup for duplicates of email:', email)
+      
+      // Get all users with this email, ordered by creation date
+      const usersRef = collection(db, 'wallet')
+      const q = query(
+        usersRef,
+        where('email', '==', email),
+        orderBy('created_at', 'asc')
+      )
+      const querySnapshot = await getDocs(q)
+      
+      if (querySnapshot.size <= 1) {
+        console.log('✅ No duplicates found')
+        return
+      }
+
+      console.log(`🔍 Found ${querySnapshot.size} users with same email`)
+      
+      // Keep the oldest user (first one)
+      const primaryUser = querySnapshot.docs[0]
+      console.log('✨ Keeping primary user:', primaryUser.id)
+
+      // Process duplicates
+      const batch = writeBatch(db)
+      
+      for (let i = 1; i < querySnapshot.docs.length; i++) {
+        const duplicateDoc = querySnapshot.docs[i]
+        console.log(`🗑️ Processing duplicate ${i}:`, duplicateDoc.id)
+
+        // Get all spending data from duplicate
+        const spendingRef = collection(db, `wallet/${duplicateDoc.id}/spending`)
+        const spendingSnapshot = await getDocs(spendingRef)
+
+        // Move spending data to primary user if any exists
+        if (!spendingSnapshot.empty) {
+          console.log(`📦 Moving ${spendingSnapshot.size} spending records from ${duplicateDoc.id} to ${primaryUser.id}`)
+          
+          for (const spendingDoc of spendingSnapshot.docs) {
+            const targetRef = doc(db, `wallet/${primaryUser.id}/spending`, spendingDoc.id)
+            batch.set(targetRef, spendingDoc.data())
+            
+            // Delete original spending document
+            const sourceRef = doc(db, `wallet/${duplicateDoc.id}/spending`, spendingDoc.id)
+            batch.delete(sourceRef)
+          }
+        }
+
+        // Delete the duplicate user document
+        batch.delete(duplicateDoc.ref)
+      }
+
+      // Commit all changes
+      await batch.commit()
+      console.log('✅ Cleanup completed successfully')
+      
+    } catch (error) {
+      console.error('❌ Error during cleanup:', error)
+    }
+  }
+
+  const findOrCreateUser = async (email: string): Promise<string | null> => {
     if (!email) return null;
     
     try {
       console.log('🔍 Looking for user with email:', email)
       
-      // First, try to find user by email
+      // First check if user exists to avoid unnecessary transactions
       const usersRef = collection(db, 'wallet')
       const q = query(usersRef, where('email', '==', email))
-      const querySnapshot = await getDocs(q)
+      const initialCheck = await getDocs(q)
       
-      if (!querySnapshot.empty) {
+      if (!initialCheck.empty) {
         // Log all found documents (to debug duplicates)
-        querySnapshot.docs.forEach((doc, index) => {
+        initialCheck.docs.forEach((doc, index) => {
           console.log(`📄 Found document ${index + 1}:`, {
             id: doc.id,
             email: doc.data().email,
@@ -52,38 +130,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })
         })
         
+        // If duplicates found, clean them up
+        if (initialCheck.size > 1) {
+          console.log('⚠️ Found duplicate users, initiating cleanup...')
+          await cleanupDuplicateUsers(email)
+          // After cleanup, get the primary user
+          const afterCleanupCheck = await getDocs(q)
+          const primaryUser = afterCleanupCheck.docs[0]
+          console.log('✅ Using primary user after cleanup:', primaryUser.id)
+          return primaryUser.id
+        }
+        
         // Use the first document found
-        const existingUser = querySnapshot.docs[0]
+        const existingUser = initialCheck.docs[0]
         console.log('✅ Using existing user:', existingUser.id)
         return existingUser.id
       }
 
       console.log('❌ No existing user found, creating new user...')
       
-      // Double check one more time before creating
-      const doubleCheckSnapshot = await getDocs(q)
-      if (!doubleCheckSnapshot.empty) {
-        const existingUser = doubleCheckSnapshot.docs[0]
-        console.log('⚠️ User was created by another process, using existing:', existingUser.id)
-        return existingUser.id
-      }
+      // If no user exists, create one in a transaction to ensure atomicity
+      return await runTransaction(db, async (transaction) => {
+        // Double check inside transaction that no user was created
+        const doubleCheckDocs = await getDocs(q)
+        
+        if (!doubleCheckDocs.empty) {
+          const existingUser = doubleCheckDocs.docs[0]
+          console.log('⚠️ User was created by another process, using existing:', existingUser.id)
+          return existingUser.id
+        }
 
-      // Create new user with auto-generated ID
-      const newUserRef = doc(collection(db, 'wallet'))
-      const userData = {
-        email: email,
-        created_at: new Date().toISOString()
-      }
-      
-      console.log('📝 Creating new user:', {
-        id: newUserRef.id,
-        path: `wallet/${newUserRef.id}`,
-        ...userData
+        // Create new user with auto-generated ID
+        const newUserRef = doc(collection(db, 'wallet'))
+        const userData = {
+          email: email,
+          created_at: new Date().toISOString()
+        }
+        
+        console.log('📝 Creating new user:', {
+          id: newUserRef.id,
+          path: `wallet/${newUserRef.id}`,
+          ...userData
+        })
+        
+        // Set the data in the transaction
+        transaction.set(newUserRef, userData)
+        
+        console.log('✨ User creation completed, ID:', newUserRef.id)
+        return newUserRef.id
       })
-      
-      await setDoc(newUserRef, userData)
-      console.log('✨ User creation completed, ID:', newUserRef.id)
-      return newUserRef.id
       
     } catch (error) {
       console.error('❌ Error in findOrCreateUser:', error)
@@ -97,8 +192,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Auth state changed:', user ? 'User logged in' : 'User logged out')
       setUser(user)
       if (user?.email) {
-        const userId = await findOrCreateUser(user.email)
-        setUserId(userId)
+        const newUserId = await findOrCreateUser(user.email)
+        setUserId(newUserId)
       } else {
         setUserId(null)
       }
@@ -116,8 +211,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Sign-in successful:', result.user)
       
       if (result.user?.email) {
-        const userId = await findOrCreateUser(result.user.email)
-        setUserId(userId)
+        const newUserId = await findOrCreateUser(result.user.email)
+        setUserId(newUserId)
       }
     } catch (error) {
       console.error('Error signing in:', error)
