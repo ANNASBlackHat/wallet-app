@@ -12,8 +12,17 @@ import { AddExpenseDialog } from '@/components/add-expense-dialog'
 import { AuthGuard } from '@/components/auth-guard'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Trash2, Loader2 } from 'lucide-react'
-import { useToast } from '@/components/ui/use-toast'
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useToast } from "@/components/ui/use-toast"
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { LogOut, Trash2, Loader2 } from 'lucide-react'
 
 interface Spending {
   Category: string
@@ -25,7 +34,7 @@ interface Spending {
 }
 
 interface SpendingData {
-  id: string
+  docId: string
   date_created: {
     seconds: number
     nanoseconds: number
@@ -44,7 +53,7 @@ const ITEMS_PER_PAGE = 10;
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
 export default function DashboardPage() {
-  const { user, userId, loading } = useAuth()
+  const { user, userId, loading, signOut } = useAuth()
   const [spendingData, setSpendingData] = useState<SpendingData[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>()
@@ -66,7 +75,7 @@ export default function DashboardPage() {
       const querySnapshot = await getDocs(q)
       
       const data = querySnapshot.docs.map(docSnap => ({
-        id: docSnap.id,
+        docId: docSnap.id,
         ...docSnap.data() as SpendingData,
         spending: Array.isArray(docSnap.data().spending) ? docSnap.data().spending : []
       }))
@@ -88,12 +97,12 @@ export default function DashboardPage() {
     }
   }, [user, loading, fetchData])
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (docId: string) => {
     if (!userId) return
 
-    setDeletingId(id)
+    setDeletingId(docId)
     try {
-      await deleteDoc(doc(db, `wallet/${userId}/spending`, id))
+      await deleteDoc(doc(db, `wallet/${userId}/spending`, docId))
       toast({
         title: 'Success',
         description: 'Expense deleted successfully'
@@ -190,7 +199,35 @@ export default function DashboardPage() {
   return (
     <AuthGuard>
       <div className="space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight">Wallet AI App</h1>
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold tracking-tight">Wallet AI App</h1>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={user?.photoURL || ''} alt={user?.email || ''} />
+                  <AvatarFallback>
+                    {user?.email?.charAt(0).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end">
+              <DropdownMenuLabel>
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">{user?.displayName || 'User'}</p>
+                  <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => signOut()}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         <div className="space-y-4 sm:space-y-0 sm:flex sm:flex-col md:flex-row md:justify-between md:items-center">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <EnhancedDateRangePicker
@@ -316,10 +353,10 @@ export default function DashboardPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(data.id)}
-                          disabled={deletingId === data.id}
+                          onClick={() => handleDelete(data.docId)}
+                          disabled={deletingId === data.docId}
                         >
-                          {deletingId === data.id ? (
+                          {deletingId === data.docId ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Trash2 className="h-4 w-4" />
