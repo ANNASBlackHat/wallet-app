@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { LogOut, Trash2, Loader2 } from 'lucide-react'
+import { ModeToggle } from '@/components/mode-toggle'
 
 interface Spending {
   Category: string
@@ -33,8 +34,7 @@ interface Spending {
   Total: number
 }
 
-interface SpendingData {
-  docId: string
+interface SpendingDataBase {
   date_created: {
     seconds: number
     nanoseconds: number
@@ -42,6 +42,10 @@ interface SpendingData {
   date_created_millis: number
   spending: Spending[]
   summary?: string
+}
+
+interface SpendingData extends SpendingDataBase {
+  docId: string
 }
 
 interface MonthlySpending {
@@ -74,11 +78,14 @@ export default function DashboardPage() {
       const q = query(spendingRef, orderBy('date_created_millis', 'desc'))
       const querySnapshot = await getDocs(q)
       
-      const data = querySnapshot.docs.map(docSnap => ({
-        docId: docSnap.id,
-        ...docSnap.data() as SpendingData,
-        spending: Array.isArray(docSnap.data().spending) ? docSnap.data().spending : []
-      }))
+      const data = querySnapshot.docs.map(docSnap => {
+        const docData = docSnap.data() as SpendingDataBase
+        return {
+          docId: docSnap.id,
+          ...docData,
+          spending: Array.isArray(docData.spending) ? docData.spending : []
+        }
+      })
 
       setSpendingData(data)
     } catch (error) {
@@ -201,31 +208,34 @@ export default function DashboardPage() {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold tracking-tight">Wallet AI App</h1>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={user?.photoURL || ''} alt={user?.email || ''} />
-                  <AvatarFallback>
-                    {user?.email?.charAt(0).toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end">
-              <DropdownMenuLabel>
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{user?.displayName || 'User'}</p>
-                  <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => signOut()}>
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            <ModeToggle />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={user?.photoURL || ''} alt={user?.email || ''} />
+                    <AvatarFallback>
+                      {user?.email?.charAt(0).toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user?.displayName || 'User'}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => signOut()}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         <div className="space-y-4 sm:space-y-0 sm:flex sm:flex-col md:flex-row md:justify-between md:items-center">
