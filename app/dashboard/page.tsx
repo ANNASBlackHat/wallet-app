@@ -7,7 +7,7 @@ import { db } from '@/lib/firebase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EnhancedDateRangePicker } from '@/components/enhanced-date-range-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, XAxis, YAxis, Bar } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, XAxis, YAxis, Bar, Sector } from 'recharts'
 import { AddExpenseDialog } from '@/components/add-expense-dialog'
 import { AuthGuard } from '@/components/auth-guard'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -66,6 +66,7 @@ export default function DashboardPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const { toast } = useToast()
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   const fetchData = useCallback(async () => {
     if (!userId) {
@@ -295,17 +296,87 @@ export default function DashboardPage() {
                     data={categoryChartData}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
+                    labelLine={true}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    activeIndex={activeIndex}
+                    activeShape={(props) => {
+                      const RADIAN = Math.PI / 180;
+                      const { cx, cy, midAngle, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props;
+                      const sin = Math.sin(-RADIAN * midAngle);
+                      const cos = Math.cos(-RADIAN * midAngle);
+                      const mx = cx + (outerRadius + 30) * cos;
+                      const my = cy + (outerRadius + 30) * sin;
+                      const ex = mx + (cos >= 0 ? 1 : -1) * 22;
+                      const ey = my;
+                      const textAnchor = cos >= 0 ? 'start' : 'end';
+
+                      return (
+                        <g>
+                          <text x={cx} y={cy} dy={8} textAnchor="middle" fill={fill}>
+                            {payload.name}
+                          </text>
+                          <Sector
+                            cx={cx}
+                            cy={cy}
+                            innerRadius={innerRadius}
+                            outerRadius={outerRadius}
+                            startAngle={startAngle}
+                            endAngle={endAngle}
+                            fill={fill}
+                          />
+                          <Sector
+                            cx={cx}
+                            cy={cy}
+                            startAngle={startAngle}
+                            endAngle={endAngle}
+                            innerRadius={outerRadius + 6}
+                            outerRadius={outerRadius + 10}
+                            fill={fill}
+                          />
+                          <path d={`M${cx},${cy}L${mx},${my}L${ex},${ey}`} stroke={fill} fill="none"/>
+                          <circle cx={ex} cy={ey} r={2} fill={fill} stroke="none"/>
+                          <text x={ex + (cos >= 0 ? 1 : -1) * 12} y={ey} textAnchor={textAnchor} fill="#333">{`${(percent * 100).toFixed(1)}%`}</text>
+                          <text x={ex + (cos >= 0 ? 1 : -1) * 12} y={ey} dy={18} textAnchor={textAnchor} fill="#999">
+                            {`${new Intl.NumberFormat('id-ID', { 
+                              style: 'currency', 
+                              currency: 'IDR',
+                              maximumFractionDigits: 0 
+                            }).format(value)}`}
+                          </text>
+                        </g>
+                      );
+                    }}
+                    onMouseEnter={(_, index) => setActiveIndex(index)}
+                    onMouseLeave={() => setActiveIndex(-1)}
                   >
                     {categoryChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={COLORS[index % COLORS.length]}
+                        style={{
+                          filter: `drop-shadow(0px 0px 4px ${COLORS[index % COLORS.length]}33)`
+                        }}
+                      />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `${Number(value).toLocaleString()} IDR`} />
-                  <Legend />
+                  <Tooltip 
+                    formatter={(value) => new Intl.NumberFormat('id-ID', { 
+                      style: 'currency', 
+                      currency: 'IDR',
+                      maximumFractionDigits: 0 
+                    }).format(Number(value))} 
+                  />
+                  <Legend 
+                    formatter={(value, entry) => {
+                      const total = categoryChartData.reduce((sum, item) => sum + item.value, 0);
+                      const item = categoryChartData.find(item => item.name === value);
+                      const percentage = ((item?.value || 0) / total * 100).toFixed(1);
+                      return `${value} (${percentage}%)`;
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
@@ -340,31 +411,51 @@ export default function DashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Category</TableHead>
+                  <TableHead className="w-[180px]">Date</TableHead>
+                  <TableHead className="w-[140px]">Category</TableHead>
                   <TableHead>Name</TableHead>
-                  <TableHead>Quantity</TableHead>
+                  <TableHead className="w-[100px]">Quantity</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Action</TableHead>
+                  <TableHead className="w-[140px] text-right">Amount</TableHead>
+                  <TableHead className="w-[80px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedData.flatMap((data, index) => 
                   data.spending.map((item, itemIndex) => (
-                    <TableRow key={`${index}-${itemIndex}`}>
-                      <TableCell>{new Date(data.date_created_millis).toLocaleDateString()}</TableCell>
-                      <TableCell>{item.Category}</TableCell>
+                    <TableRow 
+                      key={`${index}-${itemIndex}`}
+                      className="group hover:bg-muted/50 transition-colors"
+                    >
+                      <TableCell className="font-medium">
+                        {new Date(data.date_created_millis).toLocaleDateString()} {new Date(data.date_created_millis).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium
+                          ${item.Category.toLowerCase().includes('food') ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' : 
+                          item.Category.toLowerCase().includes('transport') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
+                          item.Category.toLowerCase().includes('shopping') ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' :
+                          'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                          {item.Category}
+                        </span>
+                      </TableCell>
                       <TableCell>{item.Name}</TableCell>
                       <TableCell>{item.Quantity}{item.Unit}</TableCell>
-                      <TableCell>{item.Description}</TableCell>
-                      <TableCell>{Number(item.Total).toLocaleString()} IDR</TableCell>
+                      <TableCell className="max-w-[300px] truncate">{item.Description}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {new Intl.NumberFormat('id-ID', { 
+                          style: 'currency', 
+                          currency: 'IDR',
+                          maximumFractionDigits: 0 
+                        }).format(Number(item.Total))}
+                      </TableCell>
                       <TableCell>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(data.docId)}
                           disabled={deletingId === data.docId}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           {deletingId === data.docId ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
