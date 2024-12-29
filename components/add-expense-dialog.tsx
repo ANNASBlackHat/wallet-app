@@ -41,6 +41,7 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isCameraReady, setIsCameraReady] = useState(false)
 
   const startRecording = useCallback(async () => {
     try {
@@ -184,74 +185,130 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
     }
   }
 
+  useEffect(() => {
+    if (videoStream && videoRef.current) {
+      videoRef.current.srcObject = videoStream
+    }
+  }, [videoStream])
+
   const startCamera = async () => {
+    console.log('Starting camera...')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
+      console.log('Requesting camera access...')
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
           facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        } 
+        }
       })
-      setVideoStream(stream)
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        // Wait for video to be ready
-        await new Promise((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = resolve
-          }
-        })
-        // Start playing
-        await videoRef.current.play()
-      }
-
+      console.log('Camera access granted, stream:', stream.getTracks())
+      console.log('Video track settings:', stream.getVideoTracks()[0].getSettings())
+      
+      setVideoStream(stream)
+      setIsCameraReady(true)
+      
       toast({
         title: "Camera",
         description: "Camera started. Click 'Capture' when ready."
       })
     } catch (err) {
-      console.error('Camera error:', err)
+      console.error('Detailed camera error:', err)
+      let errorMessage = "Could not access camera. "
+      
+      if (err instanceof DOMException) {
+        switch (err.name) {
+          case 'NotFoundError':
+            errorMessage += 'No camera found.'
+            break
+          case 'NotAllowedError':
+            errorMessage += 'Camera permission denied.'
+            break
+          case 'NotReadableError':
+            errorMessage += 'Camera is already in use.'
+            break
+          default:
+            errorMessage += 'Please check your camera permissions.'
+        }
+      }
+      
       toast({
         title: "Error",
-        description: "Could not access camera",
+        description: errorMessage,
         variant: "destructive"
       })
     }
   }
 
   const stopCamera = () => {
+    console.log('Stopping camera...')
     if (videoStream) {
-      videoStream.getTracks().forEach(track => track.stop())
+      console.log('Found active video stream, stopping tracks')
+      videoStream.getTracks().forEach(track => {
+        console.log(`Stopping track: ${track.kind}`)
+        track.stop()
+      })
       setVideoStream(null)
       if (videoRef.current) {
+        console.log('Clearing video source')
         videoRef.current.srcObject = null
       }
+    } else {
+      console.log('No video stream found to stop')
     }
   }
 
   const captureImage = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current
-      const canvas = canvasRef.current
-      
-      // Set canvas size to match video
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      
-      // Draw video frame to canvas
-      const ctx = canvas.getContext('2d')
-      ctx?.drawImage(video, 0, 0)
+    console.log('Attempting to capture image...')
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('Video or canvas ref not available')
+      return
+    }
+
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    
+    console.log('Video dimensions:', {
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight,
+      offsetWidth: video.offsetWidth,
+      offsetHeight: video.offsetHeight
+    })
+    
+    // Set canvas size to match video
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    
+    console.log('Canvas dimensions set to:', {
+      width: canvas.width,
+      height: canvas.height
+    })
+    
+    // Draw video frame to canvas
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      console.error('Could not get canvas context')
+      return
+    }
+    
+    try {
+      ctx.drawImage(video, 0, 0)
+      console.log('Successfully drew video frame to canvas')
       
       // Convert to file
       canvas.toBlob((blob) => {
         if (blob) {
+          console.log('Successfully created blob:', blob.size, 'bytes')
           const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' })
           handleImageSelect(file)
           stopCamera()
+        } else {
+          console.error('Failed to create blob from canvas')
         }
       }, 'image/jpeg')
+    } catch (err) {
+      console.error('Error capturing image:', err)
     }
   }
 
@@ -382,25 +439,42 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
 
               {videoStream && !imagePreview && (
                 <div className="space-y-2">
-                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-black">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
                     <video
                       ref={videoRef}
                       autoPlay
                       playsInline
                       muted
-                      className="h-full w-full object-cover"
+                      onLoadedMetadata={() => {
+                        console.log('Video metadata loaded')
+                        if (videoRef.current) {
+                          videoRef.current.play()
+                            .then(() => {
+                              console.log('Video playback started successfully')
+                            })
+                            .catch(err => {
+                              console.error('Error playing video:', err)
+                              toast({
+                                title: "Error",
+                                description: "Could not start video preview",
+                                variant: "destructive"
+                              })
+                            })
+                        }
+                      }}
+                      className="absolute inset-0 h-full w-full object-cover"
                     />
                     <canvas ref={canvasRef} className="hidden" />
-                    <div className="absolute inset-0 flex items-center justify-center">
+                    {isCameraReady && (
                       <Button
                         type="button"
                         variant="secondary"
-                        className="absolute bottom-2 left-1/2 -translate-x-1/2"
+                        className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10"
                         onClick={captureImage}
                       >
                         Capture
                       </Button>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
