@@ -187,12 +187,24 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } // Use back camera if available
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
       })
       setVideoStream(stream)
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = resolve
+          }
+        })
+        // Start playing
+        await videoRef.current.play()
       }
 
       toast({
@@ -370,7 +382,7 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
 
               {videoStream && !imagePreview && (
                 <div className="space-y-2">
-                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-black">
                     <video
                       ref={videoRef}
                       autoPlay
@@ -379,14 +391,16 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
                       className="h-full w-full object-cover"
                     />
                     <canvas ref={canvasRef} className="hidden" />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="absolute bottom-2 left-1/2 -translate-x-1/2"
-                      onClick={captureImage}
-                    >
-                      Capture
-                    </Button>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="absolute bottom-2 left-1/2 -translate-x-1/2"
+                        onClick={captureImage}
+                      >
+                        Capture
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
