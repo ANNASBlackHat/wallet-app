@@ -7,7 +7,7 @@ import { db } from '@/lib/firebase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EnhancedDateRangePicker } from '@/components/enhanced-date-range-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, XAxis, YAxis, Bar, Sector } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, XAxis, YAxis, Bar, Sector, LineChart, Line } from 'recharts'
 import { AddExpenseDialog } from '@/components/add-expense-dialog'
 import { AuthGuard } from '@/components/auth-guard'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LogOut, Trash2, Loader2 } from 'lucide-react'
 import { ModeToggle } from '@/components/mode-toggle'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import type { ActiveShapeProps } from 'recharts/types/polar/Pie'
 
 interface Spending {
   Category: string
@@ -51,6 +53,14 @@ interface SpendingData extends SpendingDataBase {
 interface MonthlySpending {
   month: string;
   total: number;
+}
+
+interface DailySpending {
+  day: number;
+  currentMonth: number;
+  previousMonth: number;
+  currentMonthAvg: number;
+  previousMonthAvg: number;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -204,6 +214,71 @@ export default function DashboardPage() {
     currentPage * ITEMS_PER_PAGE
   )
 
+  // Prepare daily spending data
+  const getDailySpending = () => {
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1
+    const previousYear = currentMonth === 0 ? currentYear - 1 : currentYear
+
+    // Initialize daily spending arrays
+    const daysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+    const daysInPreviousMonth = new Date(previousYear, previousMonth + 1, 0).getDate()
+    const dailySpending: DailySpending[] = Array.from({ length: Math.max(daysInCurrentMonth, daysInPreviousMonth) }, (_, i) => ({
+      day: i + 1,
+      currentMonth: 0,
+      previousMonth: 0,
+      currentMonthAvg: 0,
+      previousMonthAvg: 0
+    }))
+
+    // Calculate daily totals
+    spendingData.forEach(data => {
+      const date = new Date(data.date_created_millis)
+      const month = date.getMonth()
+      const year = date.getFullYear()
+      const day = date.getDate()
+
+      const total = data.spending.reduce((sum, item) => sum + Number(item.Total), 0)
+
+      if (month === currentMonth && year === currentYear) {
+        dailySpending[day - 1].currentMonth += total
+      } else if (month === previousMonth && year === previousYear) {
+        if (day <= daysInPreviousMonth) {
+          dailySpending[day - 1].previousMonth += total
+        }
+      }
+    })
+
+    // Calculate cumulative spending and averages
+    let currentMonthCumulative = 0
+    let previousMonthCumulative = 0
+    const currentMonthData = dailySpending.slice(0, daysInCurrentMonth)
+    const previousMonthData = dailySpending.slice(0, daysInPreviousMonth)
+
+    // Calculate total for averages
+    const currentMonthTotal = currentMonthData.reduce((sum, day) => sum + day.currentMonth, 0)
+    const previousMonthTotal = previousMonthData.reduce((sum, day) => sum + day.previousMonth, 0)
+    const currentMonthAvg = currentMonthTotal / daysInCurrentMonth
+    const previousMonthAvg = previousMonthTotal / daysInPreviousMonth
+
+    // Add cumulative spending and averages
+    return dailySpending.slice(0, Math.max(daysInCurrentMonth, daysInPreviousMonth)).map(day => {
+      currentMonthCumulative += day.currentMonth
+      previousMonthCumulative += day.previousMonth
+      return {
+      ...day,
+        currentMonth: currentMonthCumulative,
+        previousMonth: previousMonthCumulative,
+        currentMonthAvg: currentMonthAvg * day.day, // Trend line
+        previousMonthAvg: previousMonthAvg * day.day // Trend line
+      }
+    })
+  }
+
+  const dailySpendingData = getDailySpending()
+
   return (
     <AuthGuard>
       <div className="space-y-4">
@@ -245,6 +320,10 @@ export default function DashboardPage() {
               value={dateRange}
               onChange={(newRange) => {
                 setDateRange(newRange ? { from: newRange.from!, to: newRange.to! } : undefined)
+              }}
+              components={{
+                IconLeft: ({ ...props }: React.ComponentProps<"svg">) => <ChevronLeft className="h-4 w-4" {...props} />,
+                IconRight: ({ ...props }: React.ComponentProps<"svg">) => <ChevronRight className="h-4 w-4" {...props} />,
               }}
             />
             <Select
@@ -302,7 +381,7 @@ export default function DashboardPage() {
                     dataKey="value"
                     label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                     activeIndex={activeIndex}
-                    activeShape={(props) => {
+                    activeShape={(props: ActiveShapeProps) => {
                       const RADIAN = Math.PI / 180;
                       const { cx, cy, midAngle, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props;
                       const sin = Math.sin(-RADIAN * midAngle);
@@ -378,6 +457,59 @@ export default function DashboardPage() {
                     }}
                   />
                 </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="sm:col-span-2">
+            <CardHeader>
+              <CardTitle>Daily Spending Comparison (Cumulative)</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dailySpendingData}>
+                  <XAxis dataKey="day" />
+                  <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`} />
+                  <Tooltip 
+                    formatter={(value) => `${Number(value).toLocaleString()} IDR`}
+                    labelFormatter={(label) => `Day ${label}`}
+                  />
+                  <Legend />
+                  <Line 
+                    name="Current Month" 
+                    type="monotone"
+                    dataKey="currentMonth" 
+                    stroke={COLORS[0]}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line 
+                    name="Previous Month" 
+                    type="monotone"
+                    dataKey="previousMonth" 
+                    stroke={COLORS[1]}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line 
+                    name="Current Month Trend" 
+                    type="monotone"
+                    dataKey="currentMonthAvg" 
+                    stroke={COLORS[0]}
+                    strokeWidth={1}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                  <Line 
+                    name="Previous Month Trend" 
+                    type="monotone"
+                    dataKey="previousMonthAvg" 
+                    stroke={COLORS[1]}
+                    strokeWidth={1}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>

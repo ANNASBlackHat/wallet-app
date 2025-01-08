@@ -24,12 +24,17 @@ interface EnhancedDateRangePickerProps {
   className?: string
   value?: DateRange
   onChange?: (date: DateRange | undefined) => void
+  components?: {
+    IconLeft: React.ComponentType<React.ComponentProps<"svg">>
+    IconRight: React.ComponentType<React.ComponentProps<"svg">>
+  }
 }
 
 export function EnhancedDateRangePicker({
   className,
   value,
-  onChange
+  onChange,
+  components
 }: EnhancedDateRangePickerProps) {
   const presets = React.useMemo(() => [
     {
@@ -135,6 +140,7 @@ export function EnhancedDateRangePicker({
               selected={value}
               onSelect={onChange}
               numberOfMonths={2}
+              components={components}
             />
           </div>
         </PopoverContent>
