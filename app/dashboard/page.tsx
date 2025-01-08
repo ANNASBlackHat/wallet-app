@@ -26,6 +26,7 @@ import { LogOut, Trash2, Loader2 } from 'lucide-react'
 import { ModeToggle } from '@/components/mode-toggle'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ActiveShapeProps } from 'recharts/types/polar/Pie'
+import { startOfMonth, endOfMonth } from 'date-fns'
 
 interface Spending {
   Category: string
@@ -70,7 +71,10 @@ export default function DashboardPage() {
   const { user, userId, loading, signOut } = useAuth()
   const [spendingData, setSpendingData] = useState<SpendingData[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>()
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>(() => ({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date())
+  }))
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -182,30 +186,32 @@ export default function DashboardPage() {
 
   const averageSpending = totalSpending / filteredData.length
 
-  // Prepare monthly spending data
-  const monthlySpending = filteredData
-    .flatMap(data => ({
-      date: new Date(data.date_created_millis),
-      spending: data.spending.reduce((sum, item) => sum + Number(item.Total), 0)
-    }))
-    .reduce((acc, { date, spending }) => {
-      const monthKey = date.toLocaleString('default', { month: 'short', year: '2-digit' })
-      acc[monthKey] = (acc[monthKey] || 0) + spending
-      return acc
-    }, {} as Record<string, number>)
+  // Prepare monthly spending data (last 12 months)
+  const getMonthlySpendingData = () => {
+    const now = new Date()
+    const last12Months = Array.from({ length: 12 }, (_, i) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      return {
+        month: date.toLocaleString('default', { month: 'short', year: '2-digit' }),
+        date: date,
+        total: 0
+      }
+    }).reverse()
 
-  const monthlySpendingData: MonthlySpending[] = Object.entries(monthlySpending)
-    .map(([month, total]) => ({
-      month,
-      total
-    }))
-    .sort((a, b) => {
-      const [monthA, yearA] = a.month.split(' ')
-      const [monthB, yearB] = b.month.split(' ')
-      const dateA = new Date(`${monthA} 20${yearA}`)
-      const dateB = new Date(`${monthB} 20${yearB}`)
-      return dateA.getTime() - dateB.getTime()
+    // Calculate totals for each month
+    spendingData.forEach(data => {
+      const date = new Date(data.date_created_millis)
+      const monthKey = date.toLocaleString('default', { month: 'short', year: '2-digit' })
+      const monthData = last12Months.find(m => m.month === monthKey)
+      if (monthData) {
+        monthData.total += data.spending.reduce((sum, item) => sum + Number(item.Total), 0)
+      }
     })
+
+    return last12Months
+  }
+
+  const monthlySpendingData = getMonthlySpendingData()
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE)
@@ -516,7 +522,7 @@ export default function DashboardPage() {
 
           <Card className="sm:col-span-2">
             <CardHeader>
-              <CardTitle>Monthly Spending</CardTitle>
+              <CardTitle>Monthly Spending (Last 12 Months)</CardTitle>
             </CardHeader>
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -526,7 +532,13 @@ export default function DashboardPage() {
                   <Tooltip formatter={(value) => `${Number(value).toLocaleString()} IDR`} />
                   <Bar dataKey="total" fill="#8884d8">
                     {monthlySpendingData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={COLORS[index % COLORS.length]}
+                        style={{
+                          filter: `drop-shadow(0px 0px 4px ${COLORS[index % COLORS.length]}33)`
+                        }}
+                      />
                     ))}
                   </Bar>
                 </BarChart>
