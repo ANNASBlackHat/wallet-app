@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "migrate": "tsx scripts/run-migration.ts",
+    "validate-migration": "tsx scripts/validate-migration.ts",
+    "migrate:user": "tsx scripts/run-migration.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
