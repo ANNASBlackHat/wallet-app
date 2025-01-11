@@ -14,15 +14,90 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Mic, Plus, Loader2, PlayCircle, StopCircle, Trash2, Camera, Image } from 'lucide-react'
+import { Mic, Plus, Loader2, PlayCircle, StopCircle, Trash2, Camera, Image, Maximize2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { addDoc, collection } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useToast } from '@/components/ui/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import * as z from "zod"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { updateMonthlySummary } from '@/lib/expense-helpers'
 
 interface AddExpenseDialogProps {
   onSuccessfulSubmit?: () => void
+}
+
+const formSchema = z.object({
+  category: z.string().min(1, "Category is required"),
+  name: z.string().min(1, "Name is required"),
+  quantity: z.string().optional(),
+  unit: z.string().optional(),
+  total: z.string().min(1, "Amount is required"),
+  description: z.string().optional(),
+})
+
+interface ImagePreviewProps {
+  src: string
+  onClear: () => void
+}
+
+function ImagePreview({ src, onClear }: ImagePreviewProps) {
+  const [showFullImage, setShowFullImage] = useState(false)
+
+  return (
+    <>
+      <div className="space-y-2">
+        <div className="relative rounded-lg border bg-background">
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt="Selected"
+              className="w-full h-auto max-h-[300px] object-contain"
+            />
+            <div className="absolute top-2 right-2 flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => setShowFullImage(true)}
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                onClick={onClear}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={showFullImage} onOpenChange={setShowFullImage}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Image Preview</DialogTitle>
+          </DialogHeader>
+          <div className="relative overflow-auto">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt="Full size preview"
+              className="w-full h-auto"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
 
 export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) {
@@ -32,6 +107,7 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   const [text, setText] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [activeTab, setActiveTab] = useState('text')
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
@@ -42,6 +118,96 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isCameraReady, setIsCameraReady] = useState(false)
+  const [showFullImage, setShowFullImage] = useState(false)
+  
+  // Add manual form state
+  const [manualForm, setManualForm] = useState({
+    category: '',
+    name: '',
+    quantity: '',
+    unit: '',
+    total: '',
+    description: ''
+  })
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      category: "",
+      name: "",
+      quantity: "",
+      unit: "",
+      total: "",
+      description: "",
+    },
+  })
+
+  // Add manual submit handler
+  const handleManualSubmit = async () => {
+    if (!userId) return
+    if (!manualForm.category || !manualForm.name || !manualForm.total) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsProcessing(true)
+    try {
+      const now = new Date()
+      const yearMonth = now.toISOString().slice(0, 7) // YYYY-MM format
+
+      // Create new expense document with the new structure
+      const expenseData = {
+        category: manualForm.category,
+        name: manualForm.name,
+        quantity: Number(manualForm.quantity) || 1,
+        unit: manualForm.unit || "unit",
+        amount: parseFloat(manualForm.total),
+        description: manualForm.description || "",
+        date: now,
+        yearMonth,
+        day: now.getDate()
+      }
+
+      // Add to expenses collection
+      const expenseRef = await addDoc(collection(db, `wallet/${userId}/expenses`), expenseData)
+
+      // Update monthly summary
+      await updateMonthlySummary(userId, expenseData)
+
+      toast({
+        title: "Success",
+        description: "Expense added successfully"
+      })
+
+      if (onSuccessfulSubmit) {
+        onSuccessfulSubmit()
+      }
+
+      // Reset form
+      setManualForm({
+        category: '',
+        name: '',
+        quantity: '',
+        unit: '',
+        total: '',
+        description: ''
+      })
+      setOpen(false)
+    } catch (error) {
+      console.error('Error adding expense:', error)
+      toast({
+        title: "Error",
+        description: "Failed to add expense. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
 
   const startRecording = useCallback(async () => {
     console.log('Starting audio recording...')
@@ -223,11 +389,27 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   }
 
   const handleSubmit = async () => {
-    if (!userId) return
+    console.log('Active tab:', activeTab)
+    
+    if (activeTab === 'manual') {
+      await handleManualSubmit()
+      return
+    }
+
+    // Rest of the existing submit logic
     if (!text && !audioBlob && !selectedImage) {
       toast({
         title: "Error",
         description: "Please add some expense details",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!userId) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to add expenses",
         variant: "destructive"
       })
       return
@@ -243,7 +425,6 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
         formData.append('text', text)
       } else if (audioBlob) {
         formData.append('type', 'audio')
-        // Send audio as a file
         const extension = mediaRecorder?.mimeType.includes('webm') ? 'webm' : 'mp4'
         const audioFile = new File([audioBlob], `voice-note.${extension}`, { 
           type: mediaRecorder?.mimeType || 'audio/webm' 
@@ -254,14 +435,12 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
         formData.append('image', selectedImage)
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/v1/wallet`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/wallet`, {
         method: 'POST',
         body: formData
       })
 
-      if (!response.ok) {
-        throw new Error(`Failed to submit. Status: ${response.status}`)
-      }
+      if (!response.ok) throw new Error('Failed to submit')
 
       toast({
         title: "Success",
@@ -424,208 +603,257 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   }, [])
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg"
-          size="icon"
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Add Expense</DialogTitle>
-          <DialogDescription>
-            Add your expense details using text, voice, or image.
-          </DialogDescription>
-        </DialogHeader>
-        <Tabs defaultValue="text" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="text">Text</TabsTrigger>
-            <TabsTrigger value="voice">Voice</TabsTrigger>
-            <TabsTrigger value="image">Image</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="text" className="space-y-4">
-            <div className="space-y-4">
-              <div className="grid w-full gap-1.5">
-                <Label htmlFor="expense-text">Expense Details</Label>
-                <Textarea
-                  id="expense-text"
-                  placeholder="Example: I bought 2 pizzas for $25"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  className="min-h-[100px]"
-                />
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="voice" className="space-y-4">
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <Button
-                  type="button"
-                  variant={isListening ? "destructive" : "secondary"}
-                  className="w-full"
-                  onClick={isListening ? stopRecording : startRecording}
-                >
-                  {isListening ? (
-                    <>
-                      <StopCircle className="mr-2 h-4 w-4 animate-pulse" />
-                      Recording...
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="mr-2 h-4 w-4" />
-                      Start Recording
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {audioUrl && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={playRecording}
-                  >
-                    <PlayCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={clearRecording}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="image" className="space-y-4">
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={videoStream ? stopCamera : startCamera}
-                >
-                  <Camera className="mr-2 h-4 w-4" />
-                  {videoStream ? 'Stop Camera' : 'Camera'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => document.getElementById('gallery')?.click()}
-                >
-                  <Image className="mr-2 h-4 w-4" />
-                  Gallery
-                  <input
-                    id="gallery"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        handleImageSelect(file)
-                      }
-                    }}
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button
+            className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg"
+            size="icon"
+          >
+            <Plus className="h-6 w-6" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add Expense</DialogTitle>
+            <DialogDescription>
+              Add your expense details using text, voice, image, or manual entry.
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs defaultValue="text" className="w-full" value={activeTab} onValueChange={(value) => {
+            console.log('Tab changed to:', value)
+            setActiveTab(value)
+          }}>
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="text">Text</TabsTrigger>
+              <TabsTrigger value="voice">Voice</TabsTrigger>
+              <TabsTrigger value="image">Image</TabsTrigger>
+              <TabsTrigger value="manual">Manual</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="text" className="space-y-4">
+              <div className="space-y-4">
+                <div className="grid w-full gap-1.5">
+                  <Label htmlFor="expense-text">Expense Details</Label>
+                  <Textarea
+                    id="expense-text"
+                    placeholder="Example: I bought 2 pizzas for $25"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    className="min-h-[100px]"
                   />
-                </Button>
-              </div>
-
-              {videoStream && !imagePreview && (
-                <div className="space-y-2">
-                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      onLoadedMetadata={() => {
-                        console.log('Video metadata loaded')
-                        if (videoRef.current) {
-                          videoRef.current.play()
-                            .then(() => {
-                              console.log('Video playback started successfully')
-                            })
-                            .catch(err => {
-                              console.error('Error playing video:', err)
-                              toast({
-                                title: "Error",
-                                description: "Could not start video preview",
-                                variant: "destructive"
-                              })
-                            })
-                        }
-                      }}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                    <canvas ref={canvasRef} className="hidden" />
-                    {isCameraReady && (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10"
-                        onClick={captureImage}
-                      >
-                        Capture
-                      </Button>
-                    )}
-                  </div>
                 </div>
-              )}
+              </div>
+            </TabsContent>
 
-              {imagePreview && (
-                <div className="space-y-2">
-                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={imagePreview}
-                      alt="Selected"
-                      className="h-full w-full object-cover"
-                    />
+            <TabsContent value="voice" className="space-y-4">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <Button
+                    type="button"
+                    variant={isListening ? "destructive" : "secondary"}
+                    className="w-full"
+                    onClick={isListening ? stopRecording : startRecording}
+                  >
+                    {isListening ? (
+                      <>
+                        <StopCircle className="mr-2 h-4 w-4 animate-pulse" />
+                        Recording...
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="mr-2 h-4 w-4" />
+                        Start Recording
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {audioUrl && (
+                  <div className="flex items-center gap-2">
                     <Button
                       type="button"
-                      variant="destructive"
+                      variant="outline"
                       size="icon"
-                      className="absolute right-2 top-2"
-                      onClick={clearImage}
+                      onClick={playRecording}
+                    >
+                      <PlayCircle className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={clearRecording}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+                )}
+              </div>
+            </TabsContent>
 
-        <DialogFooter>
-          <Button 
-            type="button" 
-            onClick={handleSubmit} 
-            disabled={isProcessing || (!text && !audioBlob && !selectedImage)}
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              'Add Expense'
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <TabsContent value="image" className="space-y-4">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={videoStream ? stopCamera : startCamera}
+                  >
+                    <Camera className="mr-2 h-4 w-4" />
+                    {videoStream ? 'Stop Camera' : 'Camera'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => document.getElementById('gallery')?.click()}
+                  >
+                    <Image className="mr-2 h-4 w-4" />
+                    Gallery
+                    <input
+                      id="gallery"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          handleImageSelect(file)
+                        }
+                      }}
+                    />
+                  </Button>
+                </div>
+
+                {videoStream && !imagePreview && (
+                  <div className="space-y-2">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                      <canvas ref={canvasRef} className="hidden" />
+                      {isCameraReady && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10"
+                          onClick={captureImage}
+                        >
+                          Capture
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {imagePreview && (
+                  <ImagePreview
+                    src={imagePreview}
+                    onClear={clearImage}
+                  />
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="manual" className="space-y-4">
+              <div className="space-y-4">
+                <div className="grid w-full gap-1.5">
+                  <Label htmlFor="category">Category</Label>
+                  <Select value={manualForm.category} onValueChange={(value) => setManualForm(prev => ({ ...prev, category: value }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Food">Food</SelectItem>
+                      <SelectItem value="Transport">Transport</SelectItem>
+                      <SelectItem value="Shopping">Shopping</SelectItem>
+                      <SelectItem value="Entertainment">Entertainment</SelectItem>
+                      <SelectItem value="Bills">Bills</SelectItem>
+                      <SelectItem value="Others">Others</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid w-full gap-1.5">
+                  <Label htmlFor="name">Name</Label>
+                  <Input 
+                    id="name" 
+                    placeholder="e.g., Pizza" 
+                    value={manualForm.name}
+                    onChange={(e) => setManualForm(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="quantity">Quantity</Label>
+                    <Input 
+                      id="quantity" 
+                      type="number" 
+                      placeholder="1"
+                      value={manualForm.quantity}
+                      onChange={(e) => setManualForm(prev => ({ ...prev, quantity: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="unit">Unit</Label>
+                    <Input 
+                      id="unit" 
+                      placeholder="e.g., pcs"
+                      value={manualForm.unit}
+                      onChange={(e) => setManualForm(prev => ({ ...prev, unit: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid w-full gap-1.5">
+                  <Label htmlFor="total">Amount (IDR)</Label>
+                  <Input 
+                    id="total" 
+                    type="number" 
+                    placeholder="25000"
+                    value={manualForm.total}
+                    onChange={(e) => setManualForm(prev => ({ ...prev, total: e.target.value }))}
+                  />
+                </div>
+
+                <div className="grid w-full gap-1.5">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Add any additional details..."
+                    className="min-h-[60px]"
+                    value={manualForm.description}
+                    onChange={(e) => setManualForm(prev => ({ ...prev, description: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter>
+            <Button 
+              type="button" 
+              onClick={handleSubmit} 
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                'Add Expense'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
