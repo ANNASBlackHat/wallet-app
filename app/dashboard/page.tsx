@@ -32,20 +32,21 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    async function loadDashboardData() {
-      if (!userId) return
-      setIsLoading(true)
-      try {
-        const data = await fetchDashboardData(userId, dateRange)
-        setDashboardData(data)
-      } catch (error) {
-        console.error('Error loading dashboard data:', error)
-      } finally {
-        setIsLoading(false)
-      }
+  async function loadDashboardData() {
+    console.log('loadDashboardData...')
+    if (!userId) return
+    setIsLoading(true)
+    try {
+      const data = await fetchDashboardData(userId, dateRange)
+      setDashboardData(data)
+    } catch (error) {
+      console.error('Error loading dashboard data:', error)
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     loadDashboardData()
   }, [userId, dateRange])
 
@@ -111,6 +112,8 @@ export default function DashboardPage() {
             <RecentTransactions data={dashboardData.recentExpenses} />
           </>
         ) : null}
+
+        <AddExpenseDialog onSuccessfulSubmit={loadDashboardData} />
       </div>
     </AuthGuard>
   )

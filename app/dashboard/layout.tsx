@@ -16,8 +16,7 @@ export default function DashboardLayout({
       </header>
       <main className="p-8 relative">
         {children}
-        <InstallPWAPrompt />
-        <AddExpenseFab />
+        <InstallPWAPrompt />        
       </main>
     </div>
   )

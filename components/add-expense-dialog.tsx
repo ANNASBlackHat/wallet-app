@@ -444,11 +444,14 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
 
       toast({
         title: "Success",
-        description: "Your expense has been recorded"
+        description: "Your expense has been recorded by AI"
       })
 
       if (onSuccessfulSubmit) {
+        console.log('onSuccessfulSubmit defined')
         onSuccessfulSubmit()
+      }else{
+        console.log('onSuccessfulSubmit not defined')
       }
 
       // Clear the form
