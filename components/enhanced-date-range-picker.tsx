@@ -24,18 +24,15 @@ interface EnhancedDateRangePickerProps {
   className?: string
   value?: DateRange
   onChange?: (date: DateRange | undefined) => void
-  components?: {
-    IconLeft: React.ComponentType<React.ComponentProps<"svg">>
-    IconRight: React.ComponentType<React.ComponentProps<"svg">>
-  }
 }
 
 export function EnhancedDateRangePicker({
   className,
   value,
   onChange,
-  components
 }: EnhancedDateRangePickerProps) {
+  const [open, setOpen] = React.useState(false)
+
   const presets = React.useMemo(() => [
     {
       label: 'Today',
@@ -84,9 +81,19 @@ export function EnhancedDateRangePicker({
     },
   ], [])
 
+  // Set initial value to current month if no value is provided
+  React.useEffect(() => {
+    if (!value && onChange) {
+      const currentMonth = presets.find(preset => preset.label === 'Current month')
+      if (currentMonth) {
+        onChange(currentMonth.getValue())
+      }
+    }
+  }, [value, onChange, presets])
+
   return (
     <div className={cn('grid gap-2', className)}>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             id="date"
@@ -118,6 +125,7 @@ export function EnhancedDateRangePicker({
                 const preset = presets.find((preset) => preset.label === value)
                 if (preset) {
                   onChange?.(preset.getValue())
+                  setOpen(false)
                 }
               }}
             >
@@ -138,9 +146,13 @@ export function EnhancedDateRangePicker({
               mode="range"
               defaultMonth={value?.from}
               selected={value}
-              onSelect={onChange}
+              onSelect={(newValue) => {
+                onChange?.(newValue)
+                if (newValue?.from && newValue?.to) {
+                  setOpen(false)
+                }
+              }}
               numberOfMonths={2}
-              components={components}
             />
           </div>
         </PopoverContent>

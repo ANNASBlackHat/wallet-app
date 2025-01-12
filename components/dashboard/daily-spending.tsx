@@ -1,40 +1,17 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { SkeletonChart } from "./skeleton-chart"
-import { useEffect, useState } from "react"
-import { fetchDashboardData } from "@/lib/dashboard-helpers"
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-interface DailySpendingProps {
-  userId: string
-  selectedDate: Date
+interface DailyTotal {
+  day: number
+  total: number
+  avgAmount: number
 }
 
-export function DailySpending({ userId, selectedDate }: DailySpendingProps) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [data, setData] = useState<{ day: number; total: number; avgAmount: number }[]>([])
+interface DailySpendingProps {
+  data: DailyTotal[]
+}
 
-  useEffect(() => {
-    async function loadData() {
-      setIsLoading(true)
-      try {
-        const dashboardData = await fetchDashboardData(userId, selectedDate)
-        setData(dashboardData.dailyTotals)
-      } catch (error) {
-        console.error('Error loading daily spending:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    if (userId) {
-      loadData()
-    }
-  }, [userId, selectedDate])
-
-  if (isLoading) {
-    return <SkeletonChart title="Daily Spending" />
-  }
-
+export function DailySpending({ data }: DailySpendingProps) {
   return (
     <Card>
       <CardHeader>

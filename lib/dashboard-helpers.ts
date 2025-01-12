@@ -57,23 +57,28 @@ export interface DashboardData {
   monthlySummary: MonthlySummary | null
 }
 
+interface DateRange {
+  from: Date
+  to: Date
+}
+
 function roundToTwo(num: number): number {
   return Math.round((num + Number.EPSILON) * 100) / 100
 }
 
 export async function fetchDashboardData(
   userId: string,
-  selectedDate: Date = new Date()
+  dateRange: DateRange
 ): Promise<DashboardData> {
   const db = getFirestore()
   
-  // Get the start and end of the selected day
-  const dayStart = startOfDay(selectedDate)
-  const dayEnd = endOfDay(selectedDate)
+  // Get the start and end of the selected range
+  const rangeStart = startOfDay(dateRange.from)
+  const rangeEnd = endOfDay(dateRange.to)
   
   // Get the month for monthly comparisons
-  const currentMonth = format(selectedDate, 'yyyy-MM')
-  const previousMonth = format(subMonths(selectedDate, 1), 'yyyy-MM')
+  const currentMonth = format(dateRange.from, 'yyyy-MM')
+  const previousMonth = format(subMonths(dateRange.from, 1), 'yyyy-MM')
 
   // 1. Get current month's summary for reference
   const currentMonthSummaryRef = doc(db, `wallet/${userId}/summaries/${currentMonth}`)
@@ -89,125 +94,59 @@ export async function fetchDashboardData(
     ? previousMonthSummaryDoc.data() as MonthlySummary 
     : null
 
-  // 3. Get expenses for the selected day
+  // 3. Get expenses for the selected date range
   const expensesRef = collection(db, `wallet/${userId}/expenses`)
-  const dayExpensesQuery = query(
+  const rangeExpensesQuery = query(
     expensesRef,
-    where('date', '>=', Timestamp.fromDate(dayStart)),
-    where('date', '<=', Timestamp.fromDate(dayEnd)),
-    orderBy('date', 'asc')
+    where('date', '>=', Timestamp.fromDate(rangeStart)),
+    where('date', '<=', Timestamp.fromDate(rangeEnd)),
+    orderBy('date', 'desc')
   )
-  
-  const dayExpensesSnapshot = await getDocs(dayExpensesQuery)
-  
-  // Calculate total spending for the selected day
-  let dayTotalAmount = 0
-  let dayExpenseCount = 0
-  const dayCategoryBreakdown: { [key: string]: number } = {}
-  
-  dayExpensesSnapshot.forEach(doc => {
-    const expense = doc.data() as Expense
-    dayTotalAmount += expense.amount
-    dayExpenseCount++
 
-    console.log('category', expense.category);
+  const expensesSnapshot = await getDocs(rangeExpensesQuery)
+  const expenses = expensesSnapshot.docs.map(doc => doc.data() as Expense)
+
+  // Calculate totals and breakdowns for the selected range
+  let totalAmount = 0
+  const categoryBreakdown: { [key: string]: number } = {}
+  const dailyTotals: { [key: number]: { total: number; count: number } } = {}
+
+  expenses.forEach(expense => {
+    totalAmount += expense.amount
+    categoryBreakdown[expense.category] = (categoryBreakdown[expense.category] || 0) + expense.amount
     
-    // Handle category name
-    const categoryName = expense.category?.trim() || 'Uncategorized'
-    dayCategoryBreakdown[categoryName] = (dayCategoryBreakdown[categoryName] || 0) + expense.amount
-  })
-
-  // Round the totals
-  dayTotalAmount = roundToTwo(dayTotalAmount)
-  Object.keys(dayCategoryBreakdown).forEach(category => {
-    dayCategoryBreakdown[category] = roundToTwo(dayCategoryBreakdown[category])
-  })
-
-  // Calculate category totals for the selected day
-  const categoryTotals: CategoryTotal[] = Object.entries(dayCategoryBreakdown)
-    .map(([category, total]) => ({
-      category: category === '' ? 'Uncategorized' : category,
-      total: roundToTwo(total),
-      percentage: dayTotalAmount > 0 ? roundToTwo((total / dayTotalAmount) * 100) : 0
-    }))
-    .filter(cat => cat.total > 0) // Only show categories with spending
-    .sort((a, b) => b.total - a.total)
-
-  // Get daily totals for the current month (for the chart)
-  const monthExpensesQuery = query(
-    expensesRef,
-    where('yearMonth', '==', currentMonth),
-    orderBy('date', 'asc')
-  )
-  
-  const monthExpensesSnapshot = await getDocs(monthExpensesQuery)
-  
-  // Calculate the number of days in the current month
-  const daysInMonth = endOfMonth(selectedDate).getDate()
-  
-  // Process daily totals
-  const dailyTotalsMap = new Map<number, { total: number, count: number }>()
-  
-  // Initialize all days with zero
-  for (let day = 1; day <= daysInMonth; day++) {
-    dailyTotalsMap.set(day, { total: 0, count: 0 })
-  }
-  
-  // Add actual expenses
-  monthExpensesSnapshot.forEach(doc => {
-    const expense = doc.data() as Expense
     const day = expense.day
-    const current = dailyTotalsMap.get(day) || { total: 0, count: 0 }
-    dailyTotalsMap.set(day, {
-      total: roundToTwo(current.total + expense.amount),
-      count: current.count + 1
-    })
+    if (!dailyTotals[day]) {
+      dailyTotals[day] = { total: 0, count: 0 }
+    }
+    dailyTotals[day].total += expense.amount
+    dailyTotals[day].count++
   })
 
-  const dailyTotals: DailyTotal[] = Array.from(dailyTotalsMap.entries())
-    .map(([day, data]) => ({
-      day,
-      total: roundToTwo(data.total),
-      // Calculate average per transaction for each day
-      avgAmount: data.count > 0 ? roundToTwo(data.total / data.count) : 0
-    }))
-    .sort((a, b) => a.day - b.day)
+  // Calculate category totals with percentages
+  const categoryTotals: CategoryTotal[] = Object.entries(categoryBreakdown).map(([category, total]) => ({
+    category,
+    total,
+    percentage: totalAmount > 0 ? roundToTwo((total / totalAmount) * 100) : 0
+  }))
 
-  // 4. Get recent expenses
-  const recentExpensesQuery = query(
-    expensesRef,
-    orderBy('date', 'desc'),
-    limit(10)
-  )
-  const recentExpensesSnapshot = await getDocs(recentExpensesQuery)
-  const recentExpenses = recentExpensesSnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-    amount: roundToTwo((doc.data() as Expense).amount)
-  } as Expense & { id: string }))
-
-  // 6. Calculate month-over-month change
-  const previousDayTotal = previousMonthSummary?.avgPerDay || 0
-  const monthlyChange = previousDayTotal > 0
-    ? roundToTwo(((dayTotalAmount - previousDayTotal) / previousDayTotal) * 100)
-    : 0
+  // Format daily totals
+  const formattedDailyTotals: DailyTotal[] = Object.entries(dailyTotals).map(([day, data]) => ({
+    day: parseInt(day),
+    total: data.total,
+    avgAmount: roundToTwo(data.total / data.count)
+  }))
 
   return {
-    currentMonthTotal: dayTotalAmount,
-    previousMonthTotal: previousDayTotal,
-    monthlyChange,
-    categoryTotals,
-    dailyTotals,
-    recentExpenses,
-    monthlySummary: currentMonthSummary ? {
-      ...currentMonthSummary,
-      totalAmount: roundToTwo(currentMonthSummary.totalAmount),
-      avgPerDay: roundToTwo(currentMonthSummary.avgPerDay),
-      categoryBreakdown: Object.fromEntries(
-        Object.entries(currentMonthSummary.categoryBreakdown)
-          .map(([k, v]) => [k, roundToTwo(v)])
-      )
-    } : null
+    currentMonthTotal: totalAmount,
+    previousMonthTotal: previousMonthSummary?.totalAmount || 0,
+    monthlyChange: previousMonthSummary?.totalAmount 
+      ? roundToTwo(((totalAmount - previousMonthSummary.totalAmount) / previousMonthSummary.totalAmount) * 100)
+      : 0,
+    categoryTotals: categoryTotals.sort((a, b) => b.total - a.total),
+    dailyTotals: formattedDailyTotals.sort((a, b) => a.day - b.day),
+    recentExpenses: expenses,
+    monthlySummary: currentMonthSummary
   }
 }
 

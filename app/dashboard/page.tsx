@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button'
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { fetchDashboardData, fetchMonthlyComparison, fetchCategoryTrends, type DashboardData } from '@/lib/dashboard-helpers'
 
 // Import dashboard components
@@ -23,11 +23,31 @@ import { DailySpending } from '@/components/dashboard/daily-spending'
 import { CategoryTrends } from '@/components/dashboard/category-trends'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D']
-
 export default function DashboardPage() {
   const { userId } = useAuth()
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [dateRange, setDateRange] = useState({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date())
+  })
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      if (!userId) return
+      setIsLoading(true)
+      try {
+        const data = await fetchDashboardData(userId, dateRange)
+        setDashboardData(data)
+      } catch (error) {
+        console.error('Error loading dashboard data:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadDashboardData()
+  }, [userId, dateRange])
 
   if (!userId) {
     return null
@@ -40,43 +60,57 @@ export default function DashboardPage() {
           <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
           <div className="flex items-center space-x-2">
             <EnhancedDateRangePicker
-              value={{ 
-                from: selectedDate,
-                to: selectedDate
-              }}
+              value={dateRange}
               onChange={(newDate) => {
                 if (newDate?.from) {
-                  setSelectedDate(newDate.from)
+                  setDateRange({
+                    from: newDate.from,
+                    to: newDate.to || newDate.from
+                  })
                 }
               }}
             />
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <TotalSpendingCard userId={userId} selectedDate={selectedDate} />
-          <DailyAverageCard userId={userId} selectedDate={selectedDate} />
-        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : dashboardData ? (
+          <>
+            {/* Summary Cards */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <TotalSpendingCard 
+                total={dashboardData.currentMonthTotal}
+                previousTotal={dashboardData.previousMonthTotal}
+                change={dashboardData.monthlyChange}
+              />
+              <DailyAverageCard 
+                data={dashboardData.dailyTotals}
+              />
+            </div>
 
-        {/* Charts */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-          <div className="col-span-4">
-            <CategoryBreakdown userId={userId} selectedDate={selectedDate} />
-          </div>
-          <div className="col-span-3">
-            <MonthlyTrend userId={userId} selectedDate={selectedDate} />
-          </div>
-          <div className="col-span-4">
-            <DailySpending userId={userId} selectedDate={selectedDate} />
-          </div>
-          <div className="col-span-3">
-            <CategoryTrends userId={userId} selectedDate={selectedDate} />
-          </div>
-        </div>
+            {/* Charts */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+              <div className="col-span-4">
+                <CategoryBreakdown data={dashboardData.categoryTotals} />
+              </div>
+              <div className="col-span-3">
+                <MonthlyTrend userId={userId} selectedDate={dateRange.from} />
+              </div>
+              <div className="col-span-4">
+                <DailySpending data={dashboardData.dailyTotals} />
+              </div>
+              <div className="col-span-3">
+                <CategoryTrends userId={userId} selectedDate={dateRange.from} />
+              </div>
+            </div>
 
-        {/* Recent Transactions */}
-        <RecentTransactions userId={userId} selectedDate={selectedDate} />
+            {/* Recent Transactions */}
+            <RecentTransactions data={dashboardData.recentExpenses} />
+          </>
+        ) : null}
       </div>
     </AuthGuard>
   )

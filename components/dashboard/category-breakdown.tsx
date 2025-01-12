@@ -1,48 +1,25 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { SkeletonChart } from "./skeleton-chart"
-import { useEffect, useState } from "react"
-import { fetchDashboardData, type CategoryTotal } from "@/lib/dashboard-helpers"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
+
+interface CategoryTotal {
+  category: string
+  total: number
+  percentage: number
+}
+
+interface CategoryBreakdownProps {
+  data: CategoryTotal[]
+}
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D']
 
-interface CategoryBreakdownProps {
-  userId: string
-  selectedDate: Date
-}
-
-export function CategoryBreakdown({ userId, selectedDate }: CategoryBreakdownProps) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [data, setData] = useState<CategoryTotal[]>([])
-
-  useEffect(() => {
-    async function loadData() {
-      setIsLoading(true)
-      try {
-        const dashboardData = await fetchDashboardData(userId, selectedDate)
-        setData(dashboardData.categoryTotals)
-      } catch (error) {
-        console.error('Error loading category breakdown:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    if (userId) {
-      loadData()
-    }
-  }, [userId, selectedDate])
-
-  if (isLoading) {
-    return <SkeletonChart title="Category Breakdown" />
-  }
-
+export function CategoryBreakdown({ data }: CategoryBreakdownProps) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Category Breakdown</CardTitle>
       </CardHeader>
-      <CardContent className="pl-2">
+      <CardContent>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -55,6 +32,7 @@ export function CategoryBreakdown({ userId, selectedDate }: CategoryBreakdownPro
                 fill="#8884d8"
                 dataKey="total"
                 nameKey="category"
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
               >
                 {data.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
