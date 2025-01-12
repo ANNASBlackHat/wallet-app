@@ -29,6 +29,20 @@ export function RecentTransactions({ data }: RecentTransactionsProps) {
     setItemsToShow(prev => Math.min(prev + ITEMS_PER_LOAD, data.length))
   }
 
+  const formatDate = (date: Date) => {
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    if (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')) {
+      return `Today, ${format(date, 'HH:mm')}`
+    } else if (format(date, 'yyyy-MM-dd') === format(yesterday, 'yyyy-MM-dd')) {
+      return `Yesterday, ${format(date, 'HH:mm')}`
+    } else {
+      return format(date, 'dd MMM, HH:mm')
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -47,7 +61,7 @@ export function RecentTransactions({ data }: RecentTransactionsProps) {
           <TableBody>
             {data.slice(0, itemsToShow).map((expense, index) => (
               <TableRow key={index}>
-                <TableCell>{format(expense.date.toDate(), 'dd MMM yyyy')}</TableCell>
+                <TableCell>{formatDate(expense.date.toDate())}</TableCell>
                 <TableCell>{expense.category}</TableCell>
                 <TableCell>{expense.name}</TableCell>
                 <TableCell className="text-right">
