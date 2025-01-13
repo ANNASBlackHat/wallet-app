@@ -7,7 +7,8 @@ import {
   Timestamp,
   DocumentReference,
   getFirestore,
-  updateDoc
+  updateDoc,
+  getDocs
 } from 'firebase/firestore'
 
 interface Expense {
@@ -31,6 +32,69 @@ interface MonthlySummary {
   categoryBreakdown: CategorySummary
   expenseCount: number
   avgPerDay: number
+}
+
+// Cache interface
+interface CategoryCache {
+  categories: Set<string>
+  lastFetched: number
+  userId: string
+}
+
+// Global cache object
+let categoryCache: CategoryCache | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+export async function getUserCategories(userId: string): Promise<string[]> {
+  console.log('🔍 Fetching user categories for:', userId)
+  
+  // Check cache first
+  if (categoryCache && 
+      categoryCache.userId === userId && 
+      Date.now() - categoryCache.lastFetched < CACHE_DURATION) {
+    console.log('✨ Returning cached categories')
+    return Array.from(categoryCache.categories)
+  }
+
+  const db = getFirestore()
+  const categories = new Set<string>()
+
+  try {
+    // First, check monthly summaries for categories
+    const summariesRef = collection(db, `wallet/${userId}/summaries`)
+    const summariesSnapshot = await getDocs(summariesRef)
+    
+    console.log('📊 Processing monthly summaries...')
+    summariesSnapshot.forEach(doc => {
+      const summary = doc.data() as MonthlySummary
+      if (summary.categoryBreakdown) {
+        Object.keys(summary.categoryBreakdown).forEach(category => {
+          categories.add(category)
+        })
+      }
+    })
+
+    // Update cache
+    categoryCache = {
+      categories,
+      lastFetched: Date.now(),
+      userId
+    }
+
+    console.log('✅ Categories fetched successfully:', Array.from(categories))
+    return Array.from(categories)
+  } catch (error) {
+    console.error('❌ Error fetching categories:', error)
+    // Return default categories if fetch fails
+    return ['Food', 'Transport', 'Shopping', 'Entertainment', 'Bills', 'Others']
+  }
+}
+
+// Function to add a new category to cache
+export function addCategoryToCache(userId: string, category: string): void {
+  if (categoryCache && categoryCache.userId === userId) {
+    categoryCache.categories.add(category)
+  }
 }
 
 export async function updateMonthlySummary(

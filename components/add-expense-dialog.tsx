@@ -26,6 +26,11 @@ import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { updateMonthlySummary } from '@/lib/expense-helpers'
+import { getUserCategories, addCategoryToCache } from '@/lib/expense-helpers'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Check, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface AddExpenseDialogProps {
   onSuccessfulSubmit?: () => void
@@ -130,6 +135,13 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
     description: ''
   })
 
+  // Add new states for category management
+  const [categories, setCategories] = useState<string[]>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false)
+  const [categoryComboboxOpen, setCategoryComboboxOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState("")
+  const [customCategory, setCustomCategory] = useState("")
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -142,10 +154,106 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
     },
   })
 
+  // Load categories when dialog opens
+  useEffect(() => {
+    async function loadCategories() {
+      if (!userId || !open) return
+      
+      setIsLoadingCategories(true)
+      try {
+        const userCategories = await getUserCategories(userId)
+        setCategories(userCategories)
+      } catch (error) {
+        console.error('Failed to load categories:', error)
+        toast({
+          title: "Error",
+          description: "Failed to load categories",
+          variant: "destructive"
+        })
+      } finally {
+        setIsLoadingCategories(false)
+      }
+    }
+
+    loadCategories()
+  }, [userId, open, toast])
+
+  // Update manualForm when category changes
+  useEffect(() => {
+    if (selectedCategory || customCategory) {
+      setManualForm(prev => ({
+        ...prev,
+        category: customCategory || selectedCategory
+      }))
+    }
+  }, [selectedCategory, customCategory])
+
+  // Replace the existing Select component with this new Combobox in the manual tab content
+  const categorySelect = (
+    <div className="grid w-full gap-1.5">
+      <Label htmlFor="category">Category</Label>
+      <Popover open={categoryComboboxOpen} onOpenChange={setCategoryComboboxOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={categoryComboboxOpen}
+            className="justify-between"
+          >
+            {isLoadingCategories ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : customCategory || selectedCategory || "Select or type category..."}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-0">
+          <Command>
+            <CommandInput 
+              placeholder="Search or add category..." 
+              value={customCategory}
+              onValueChange={(value) => {
+                setCustomCategory(value)
+                setSelectedCategory("")
+              }}
+            />
+            <CommandEmpty>
+              {customCategory ? `Press enter to add "${customCategory}"` : "No category found."}
+            </CommandEmpty>
+            {categories.length > 0 && (
+              <CommandGroup>
+                {categories.map((category) => (
+                  <CommandItem
+                    key={category}
+                    value={category}
+                    onSelect={(value) => {
+                      setSelectedCategory(value)
+                      setCustomCategory("")
+                      setCategoryComboboxOpen(false)
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        selectedCategory === category ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {category}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+
   // Add manual submit handler
   const handleManualSubmit = async () => {
     if (!userId) return
-    if (!manualForm.category || !manualForm.name || !manualForm.total) {
+    
+    const category = customCategory || selectedCategory
+    if (!category || !manualForm.name || !manualForm.total) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -159,9 +267,15 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
       const now = new Date()
       const yearMonth = now.toISOString().slice(0, 7) // YYYY-MM format
 
-      // Create new expense document with the new structure
+      // If it's a new category, add it to cache
+      if (customCategory && !categories.includes(customCategory)) {
+        addCategoryToCache(userId, customCategory)
+        setCategories(prev => [...prev, customCategory])
+      }
+
+      // Create new expense document
       const expenseData = {
-        category: manualForm.category,
+        category,
         name: manualForm.name,
         quantity: Number(manualForm.quantity) || 1,
         unit: manualForm.unit || "unit",
@@ -184,7 +298,10 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
       })
 
       if (onSuccessfulSubmit) {
+        console.log('onSuccessfulSubmit defined')
         onSuccessfulSubmit()
+      }else{
+        console.log('onSuccessfulSubmit not defined')
       }
 
       // Reset form
@@ -764,22 +881,7 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
 
             <TabsContent value="manual" className="space-y-4">
               <div className="space-y-4">
-                <div className="grid w-full gap-1.5">
-                  <Label htmlFor="category">Category</Label>
-                  <Select value={manualForm.category} onValueChange={(value) => setManualForm(prev => ({ ...prev, category: value }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Food">Food</SelectItem>
-                      <SelectItem value="Transport">Transport</SelectItem>
-                      <SelectItem value="Shopping">Shopping</SelectItem>
-                      <SelectItem value="Entertainment">Entertainment</SelectItem>
-                      <SelectItem value="Bills">Bills</SelectItem>
-                      <SelectItem value="Others">Others</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {categorySelect}
 
                 <div className="grid w-full gap-1.5">
                   <Label htmlFor="name">Name</Label>
