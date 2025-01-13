@@ -43,6 +43,9 @@ export function RecentTransactions({ data }: RecentTransactionsProps) {
     }
   }
 
+
+  console.log(`hasMoreItems: ${hasMoreItems}, itemsToShow: ${itemsToShow}, length: ${data.length}`)
+
   return (
     <Card>
       <CardHeader>

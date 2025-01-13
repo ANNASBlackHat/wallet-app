@@ -24,7 +24,7 @@ import { CategoryTrends } from '@/components/dashboard/category-trends'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 
 export default function DashboardPage() {
-  const { userId } = useAuth()
+  const { userId, user } = useAuth()
   const [dateRange, setDateRange] = useState({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date())
@@ -32,15 +32,28 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  console.log('📊 Dashboard Page - Mounted', { 
+    hasUserId: !!userId,
+    userEmail: user?.email,
+    currentDateRange: {
+      from: dateRange.from.toISOString(),
+      to: dateRange.to.toISOString()
+    }
+  })
+
   async function loadDashboardData() {
-    console.log('loadDashboardData...')
-    if (!userId) return
+    console.log('📊 Dashboard Page - Loading data...', { userId })
+    if (!userId) {
+      console.log('📊 Dashboard Page - No userId available, skipping data load')
+      return
+    }
     setIsLoading(true)
     try {
       const data = await fetchDashboardData(userId, dateRange)
+      console.log('📊 Dashboard Page - Data loaded successfully')
       setDashboardData(data)
     } catch (error) {
-      console.error('Error loading dashboard data:', error)
+      console.error('📊 Dashboard Page - Error loading data:', error)
     } finally {
       setIsLoading(false)
     }
@@ -49,10 +62,6 @@ export default function DashboardPage() {
   useEffect(() => {
     loadDashboardData()
   }, [userId, dateRange])
-
-  if (!userId) {
-    return null
-  }
 
   return (
     <AuthGuard>
