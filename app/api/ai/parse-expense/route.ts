@@ -1,8 +1,33 @@
 import { NextResponse } from 'next/server'
 import { VertexAI } from '@google-cloud/vertexai'
+import { auth } from '@/lib/firebase-admin'
 
 export async function POST(request: Request) {
   try {
+    console.log('request.... ', request)
+    // Get the Authorization header
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+        console.log('authHeader', authHeader)
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // Extract and verify the token
+    const token = authHeader.split('Bearer ')[1]
+    try {
+        console.log('verifying token')
+      await auth.verifyIdToken(token)
+    } catch (error) {
+      console.error('Error verifying token:', error)
+      return NextResponse.json(
+        { success: false, error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
     const { text } = await request.json()
     console.log('text', text)
 

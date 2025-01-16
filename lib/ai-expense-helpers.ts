@@ -1,4 +1,5 @@
 import { handleManualSubmit } from './expense-helpers'
+import { auth } from '@/lib/firebase'
 
 interface AIExpenseInput {
   userId: string
@@ -20,10 +21,18 @@ interface ParsedExpenseData {
 // This function will be implemented later with actual AI processing
 async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseData> {
   try {
+    // Get the current user's ID token
+    const currentUser = auth.currentUser
+    if (!currentUser) {
+      throw new Error('User not authenticated')
+    }
+    const token = await currentUser.getIdToken()
+
     const response = await fetch('/api/ai/parse-expense', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
         text: input.text
