@@ -8,7 +8,8 @@ import {
   DocumentReference,
   getFirestore,
   updateDoc,
-  getDocs
+  getDocs,
+  addDoc
 } from 'firebase/firestore'
 
 interface Expense {
@@ -143,4 +144,52 @@ export async function updateMonthlySummary(
     console.error('Error updating monthly summary:', error)
     throw error
   }
+}
+
+interface ManualExpenseInput {
+  userId: string
+  category: string
+  name: string
+  quantity?: string
+  unit?: string
+  total: string
+  description?: string
+}
+
+export async function handleManualSubmit({
+  userId,
+  category,
+  name,
+  quantity,
+  unit,
+  total,
+  description
+}: ManualExpenseInput): Promise<void> {
+  if (!userId) throw new Error('User ID is required')
+  if (!category || !name || !total) {
+    throw new Error('Category, name and total amount are required')
+  }
+
+  const now = new Date()
+  const yearMonth = now.toISOString().slice(0, 7) // YYYY-MM format
+
+  // Create new expense document
+  const expenseData: Expense = {
+    category,
+    name,
+    quantity: Number(quantity) || 1,
+    unit: unit || "unit",
+    amount: parseFloat(total),
+    description: description || "",
+    date: now,
+    yearMonth,
+    day: now.getDate()
+  }
+
+  const db = getFirestore()
+  // Add to expenses collection
+  await addDoc(collection(db, `wallet/${userId}/expenses`), expenseData)
+
+  // Update monthly summary
+  await updateMonthlySummary(userId, expenseData)
 } 

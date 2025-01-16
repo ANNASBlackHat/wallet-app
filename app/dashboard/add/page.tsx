@@ -19,7 +19,7 @@ export default function AddExpensePage() {
     
     setIsLoading(true)
     try {
-      const response = await fetch('https://wallet.annasblackhat.com/v1/wallet', {
+      const response = await fetch('/v1/wallet', {
         method: 'POST',
         body: formData
       })

@@ -25,8 +25,8 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { updateMonthlySummary } from '@/lib/expense-helpers'
-import { getUserCategories, addCategoryToCache } from '@/lib/expense-helpers'
+import { updateMonthlySummary, getUserCategories, addCategoryToCache, handleManualSubmit } from '@/lib/expense-helpers'
+import { handleAIExpenseSubmit } from '@/lib/ai-expense-helpers'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Check, ChevronsUpDown } from "lucide-react"
@@ -249,7 +249,7 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
   )
 
   // Add manual submit handler
-  const handleManualSubmit = async () => {
+  const handleSubmitInput = async () => {
     if (!userId) return
     
     const category = customCategory || selectedCategory
@@ -262,35 +262,22 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
       return
     }
 
-    setIsProcessing(true)
     try {
-      const now = new Date()
-      const yearMonth = now.toISOString().slice(0, 7) // YYYY-MM format
-
       // If it's a new category, add it to cache
       if (customCategory && !categories.includes(customCategory)) {
         addCategoryToCache(userId, customCategory)
         setCategories(prev => [...prev, customCategory])
       }
 
-      // Create new expense document
-      const expenseData = {
+      await handleManualSubmit({
+        userId,
         category,
         name: manualForm.name,
-        quantity: Number(manualForm.quantity) || 1,
-        unit: manualForm.unit || "unit",
-        amount: parseFloat(manualForm.total),
-        description: manualForm.description || "",
-        date: now,
-        yearMonth,
-        day: now.getDate()
-      }
-
-      // Add to expenses collection
-      const expenseRef = await addDoc(collection(db, `wallet/${userId}/expenses`), expenseData)
-
-      // Update monthly summary
-      await updateMonthlySummary(userId, expenseData)
+        quantity: manualForm.quantity,
+        unit: manualForm.unit,
+        total: manualForm.total,
+        description: manualForm.description
+      })
 
       toast({
         title: "Success",
@@ -507,21 +494,6 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
 
   const handleSubmit = async () => {
     console.log('Active tab:', activeTab)
-    
-    if (activeTab === 'manual') {
-      await handleManualSubmit()
-      return
-    }
-
-    // Rest of the existing submit logic
-    if (!text && !audioBlob && !selectedImage) {
-      toast({
-        title: "Error",
-        description: "Please add some expense details",
-        variant: "destructive"
-      })
-      return
-    }
 
     if (!userId) {
       toast({
@@ -533,31 +505,20 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
     }
 
     setIsProcessing(true)
+    
+    if (activeTab === 'manual') {
+      await handleSubmitInput()
+      return
+    }
+    
     try {
-      const formData = new FormData()
-      formData.append('user_id', userId)
-      
-      if (text) {
-        formData.append('type', 'text')
-        formData.append('text', text)
-      } else if (audioBlob) {
-        formData.append('type', 'audio')
-        const extension = mediaRecorder?.mimeType.includes('webm') ? 'webm' : 'mp4'
-        const audioFile = new File([audioBlob], `voice-note.${extension}`, { 
-          type: mediaRecorder?.mimeType || 'audio/webm' 
-        })
-        formData.append('audio', audioFile)
-      } else if (selectedImage) {
-        formData.append('type', 'image')
-        formData.append('image', selectedImage)
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/wallet`, {
-        method: 'POST',
-        body: formData
+      await handleAIExpenseSubmit({
+        userId,
+        text: text || undefined,
+        audioBlob: audioBlob || undefined,
+        audioMimeType: mediaRecorder?.mimeType,
+        selectedImage: selectedImage || undefined
       })
-
-      if (!response.ok) throw new Error('Failed to submit')
 
       toast({
         title: "Success",
