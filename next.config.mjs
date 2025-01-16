@@ -23,6 +23,16 @@ const nextConfig = {
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      net: false,
+      tls: false,
+      fs: false,
+      child_process: false,
+    };
+    return config;
+  },
 }
 
 mergeConfig(nextConfig, userConfig)

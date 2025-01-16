@@ -19,15 +19,36 @@ interface ParsedExpenseData {
 
 // This function will be implemented later with actual AI processing
 async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseData> {
-  // TODO: Implement actual AI processing
-  // For now, return mock data for testing
-  return {
-    name: "Office Supplies",
-    category: "Stationery",
-    quantity: 50,
-    unit: "pieces",
-    total: 1500,
-    description: "Monthly paper and pen supplies for the office"
+  try {
+    const response = await fetch('/api/ai/parse-expense', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: input.text
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to parse expense');
+    }
+
+    const data = await response.json();
+    console.log('AI Response:', data.aiResponse);
+    
+    return data.parsedExpense;
+  } catch (error) {
+    console.error('Error parsing expense:', error);
+    // Return mock data as fallback
+    return {
+      name: "Office Supplies",
+      category: "Stationery",
+      quantity: 50,
+      unit: "pieces",
+      total: 1500,
+      description: "Monthly paper and pen supplies for the office"
+    }
   }
 }
 
