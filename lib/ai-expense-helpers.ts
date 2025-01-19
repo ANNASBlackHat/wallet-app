@@ -52,6 +52,20 @@ async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseDa
     }
     const token = await currentUser.getIdToken()
 
+    // Convert image to base64 if present
+    let imageBase64;
+    if (input.selectedImage) {
+      const buffer = await input.selectedImage.arrayBuffer();
+      imageBase64 = Buffer.from(buffer).toString('base64');
+    }
+
+    // Convert audio to base64 if present
+    let audioBase64;
+    if (input.audioBlob) {
+      const buffer = await input.audioBlob.arrayBuffer();
+      audioBase64 = Buffer.from(buffer).toString('base64');
+    }
+
     const response = await fetch('/api/ai/parse-expense', {
       method: 'POST',
       headers: {
@@ -59,7 +73,10 @@ async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseDa
         'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
-        text: input.text
+        text: input.text,
+        image: imageBase64,
+        audio: audioBase64,
+        audioMimeType: input.audioMimeType
       })
     });
 

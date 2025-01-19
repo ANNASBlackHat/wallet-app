@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/firebase-admin'
 import { GoogleGenerativeAI } from "@google/generative-ai"
+import { GoogleAIFileManager, FileState } from "@google/generative-ai/server"
 
 interface ParsedExpenseData {
   name: string
@@ -9,6 +10,45 @@ interface ParsedExpenseData {
   unit: string
   total: number
   description: string
+}
+
+async function processAudioFile(audioBase64: string, mimeType: string) {
+  // Initialize file manager
+  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY || '');
+
+  // Convert base64 to buffer and create a temporary file
+  const buffer = Buffer.from(audioBase64, 'base64');
+  const tempFilePath = `/tmp/expense_audio_${Date.now()}.${mimeType.split('/')[1]}`;
+  await require('fs').promises.writeFile(tempFilePath, buffer);
+  
+  try {
+    // Upload the file
+    const uploadResult = await fileManager.uploadFile(tempFilePath, {
+      mimeType: mimeType,
+      displayName: `expense_audio_${Date.now()}.${mimeType.split('/')[1]}`,
+    });
+
+    // Wait for processing
+    let file = await fileManager.getFile(uploadResult.file.name);
+    while (file.state === FileState.PROCESSING) {
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds between checks
+      file = await fileManager.getFile(uploadResult.file.name);
+    }
+
+    if (file.state === FileState.FAILED) {
+      throw new Error("Audio processing failed");
+    }
+
+    return uploadResult.file;
+
+  } finally {
+    // Clean up temporary file
+    try {
+      await require('fs').promises.unlink(tempFilePath);
+    } catch (error) {
+      console.error('Error cleaning up temp file:', error);
+    }
+  }
 }
 
 function parseAIResponse(aiResponse: string): ParsedExpenseData[] {
@@ -67,15 +107,40 @@ export async function POST(request: Request) {
       )
     }
 
-    const { text } = await request.json()
-    console.log('text', text)    
+    const { text, image, audio, audioMimeType } = await request.json()
+    console.log('Input received - Text:', text ? 'yes' : 'no', 'Image:', image ? 'yes' : 'no', 'Audio:', audio ? 'yes' : 'no')    
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-1.5-flash' });
-    const prompt = getPrompt(text);
+    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest' });
+    
+    let result;
+    if (audio) {
+      // Handle audio input
+      const processedFile = await processAudioFile(audio, audioMimeType);
+      console.log('Audio file processed:', processedFile.name);
+      const audioData = {
+        fileData: {
+          fileUri: processedFile.uri,
+          mimeType: processedFile.mimeType,
+        },
+      }
+      result = await model.generateContent([audioData, getPrompt()]);
+    } else if (image) {
+      // Handle image input
+      const imageData = {
+        inlineData: {
+          data: image,
+          mimeType: "image/jpeg"
+        }
+      };
+      
+      const prompt = "Parse this receipt/expense image and extract the expense details.";
+      result = await model.generateContent([imageData, prompt, getPrompt()]);
+    } else {      
+      result = await model.generateContent([getPrompt(), text]);
+    }
 
-    const genaiResult = await model.generateContent([prompt, text]);
-    const response = genaiResult.response.text();
+    const response = result.response.text();
     console.log('LLM Response:', response);
 
     // Parse the LLM response into structured data
@@ -95,10 +160,10 @@ export async function POST(request: Request) {
   }
 } 
 
-function getPrompt(text: string): string {
+function getPrompt(): string {
   return `
   You are a helpful assistant that can parse and categorize expenses.
-  You will be given a text of an expense and you will need to parse it and return the following:
+  You will be given a text, image, or transcribed audio of an expense and you will need to parse it and return the following:
   - name: The name of the expense
   - category: The category of the expense
   - quantity: The quantity of the expense
@@ -117,5 +182,18 @@ function getPrompt(text: string): string {
       "description": "makan malam dengan ayam, tahu dan tempe"
     }
   ]
+
+  For images, carefully look for:
+  1. The total amount (usually at the bottom)
+  2. Individual items and their prices
+  3. Any quantities mentioned
+  4. The merchant name or receipt title
+  5. The date (include in description if found)
+
+  For audio, focus on:
+  1. Listen for mentioned amounts and prices
+  2. Identify item names and quantities
+  3. Note any category-related keywords
+  4. Include any additional context in the description
   `;
 }
