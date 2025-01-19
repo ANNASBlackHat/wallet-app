@@ -18,8 +18,32 @@ interface ParsedExpenseData {
   description: string
 }
 
-// This function will be implemented later with actual AI processing
-async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseData> {
+function parseAIResponse(aiResponse: string): ParsedExpenseData[] {
+  try {
+    // Clean the response to ensure we only get the JSON part
+    const jsonStr = aiResponse.substring(
+      aiResponse.indexOf('['),
+      aiResponse.lastIndexOf(']') + 1
+    );
+    
+    const parsedData = JSON.parse(jsonStr);
+    
+    // Validate and transform the data
+    return parsedData.map((item: any) => ({
+      name: item.name || '',
+      category: item.category?.toLowerCase() || 'others',
+      quantity: Number(item.quantity) || 1,
+      unit: item.unit || 'unit',
+      total: Number(item.total) || 0,
+      description: item.description || ''
+    }));
+  } catch (error) {
+    console.error('Error parsing AI response:', error);
+    throw new Error('Failed to parse AI response');
+  }
+}
+
+async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseData[]> {
   try {
     // Get the current user's ID token
     const currentUser = auth.currentUser
@@ -44,20 +68,22 @@ async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseDa
     }
 
     const data = await response.json();
-    console.log('AI Response:', data.aiResponse);
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to parse expense');
+    }
     
-    return data.parsedExpense;
+    return data.parsedExpenses;
   } catch (error) {
     console.error('Error parsing expense:', error);
     // Return mock data as fallback
-    return {
+    return [{
       name: "Office Supplies",
-      category: "Stationery",
+      category: "stationery",
       quantity: 50,
       unit: "pieces",
       total: 1500,
       description: "Monthly paper and pen supplies for the office"
-    }
+    }];
   }
 }
 
@@ -70,19 +96,21 @@ export async function handleAIExpenseSubmit(input: AIExpenseInput): Promise<void
     throw new Error('Please add some expense details')
   }
 
-  // Parse the input using AI (currently mocked)
-  const parsedData = await parseExpenseInput(input)
+  // Parse the input using AI
+  const parsedExpenses = await parseExpenseInput(input)
 
-  // Use the existing handleManualSubmit to save the data
-  await handleManualSubmit({
-    userId: input.userId,
-    category: parsedData.category,
-    name: parsedData.name,
-    quantity: parsedData.quantity.toString(),
-    unit: parsedData.unit,
-    total: parsedData.total.toString(),
-    description: parsedData.description
-  })
+  // Save each expense
+  for (const expense of parsedExpenses) {
+    await handleManualSubmit({
+      userId: input.userId,
+      category: expense.category,
+      name: expense.name,
+      quantity: expense.quantity.toString(),
+      unit: expense.unit,
+      total: expense.total.toString(),
+      description: expense.description
+    })
+  }
 }
 
 export async function handleAIExpenseSubmitByAPI({
