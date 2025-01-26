@@ -105,13 +105,17 @@ export default function DashboardPage() {
                 <CategoryBreakdown data={dashboardData.categoryTotals} />
               </div>
               <div className="col-span-3">
-                <MonthlyTrend userId={userId} selectedDate={dateRange.from} />
+                {userId && (
+                  <MonthlyTrend userId={userId} selectedDate={dateRange.from} />
+                )}
               </div>
               <div className="col-span-4">
                 <DailySpending data={dashboardData.dailyTotals} />
               </div>
               <div className="col-span-3">
-                <CategoryTrends userId={userId} selectedDate={dateRange.from} />
+                {userId && (
+                  <CategoryTrends userId={userId} selectedDate={dateRange.from} />
+                )}
               </div>
             </div>
 
@@ -119,6 +123,7 @@ export default function DashboardPage() {
             <RecentTransactions 
               data={dashboardData.recentExpenses} 
               onDelete={loadDashboardData}
+              onEdit={loadDashboardData}
             />
           </>
         ) : null}

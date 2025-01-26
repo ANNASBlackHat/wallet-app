@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
-import { ChevronDown, Trash2, Loader2 } from "lucide-react"
+import { ChevronDown, Trash2, Loader2, Pencil } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { deleteExpense } from "@/lib/expense-helpers"
 import { useAuth } from "@/contexts/auth-context"
 import { Timestamp } from 'firebase/firestore'
+import { EditExpenseDialog } from '@/components/edit-expense-dialog'
 
 interface Expense {
   id: string
@@ -34,16 +35,18 @@ interface Expense {
 interface RecentTransactionsProps {
   data: Expense[]
   onDelete?: () => void
+  onEdit?: () => void
 }
 
 const INITIAL_ITEMS_TO_SHOW = 5
 const ITEMS_PER_LOAD = 5
 
-export function RecentTransactions({ data, onDelete }: RecentTransactionsProps) {
+export function RecentTransactions({ data, onDelete, onEdit }: RecentTransactionsProps) {
   const [itemsToShow, setItemsToShow] = useState(INITIAL_ITEMS_TO_SHOW)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const { toast } = useToast()
   const { userId } = useAuth()
   
@@ -56,6 +59,11 @@ export function RecentTransactions({ data, onDelete }: RecentTransactionsProps) 
   const handleDeleteClick = (expense: Expense) => {
     setSelectedExpense(expense)
     setIsDeleteDialogOpen(true)
+  }
+
+  const handleEditClick = (expense: Expense) => {
+    setSelectedExpense(expense)
+    setIsEditDialogOpen(true)
   }
 
   const handleDeleteConfirm = async () => {
@@ -112,7 +120,7 @@ export function RecentTransactions({ data, onDelete }: RecentTransactionsProps) 
               <TableHead>Category</TableHead>
               <TableHead>Name</TableHead>
               <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[100px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -128,18 +136,28 @@ export function RecentTransactions({ data, onDelete }: RecentTransactionsProps) 
                   }).format(expense.amount)}
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteClick(expense)}
-                    disabled={deletingId === expense.id}
-                  >
-                    {deletingId === expense.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                    )}
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEditClick(expense)}
+                      disabled={deletingId === expense.id}
+                    >
+                      <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteClick(expense)}
+                      disabled={deletingId === expense.id}
+                    >
+                      {deletingId === expense.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                      )}
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -191,6 +209,19 @@ export function RecentTransactions({ data, onDelete }: RecentTransactionsProps) 
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Dialog */}
+        {selectedExpense && (
+          <EditExpenseDialog
+            expense={selectedExpense}
+            open={isEditDialogOpen}
+            onOpenChange={setIsEditDialogOpen}
+            onSuccessfulEdit={() => {
+              onEdit?.()
+              setSelectedExpense(null)
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   )

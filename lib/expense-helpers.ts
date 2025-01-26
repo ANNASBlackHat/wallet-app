@@ -320,4 +320,157 @@ export async function deleteExpense(userId: string, expenseId: string, expense: 
   } else {
     throw new Error('Cannot delete expenses while offline')
   }
+}
+
+interface UpdateExpenseInput extends Expense {
+  oldYearMonth: string // To track month changes
+}
+
+export async function updateExpense(userId: string, expenseId: string, updatedExpense: UpdateExpenseInput): Promise<void> {
+  if (!userId) throw new Error('User ID is required')
+  if (!expenseId) throw new Error('Expense ID is required')
+
+  // Check if we're online
+  if (isOnline()) {
+    try {
+      const db = getFirestore()
+      
+      // Start a transaction to ensure data consistency
+      await runTransaction(db, async (transaction) => {
+        // 1. First, get all necessary documents (READ operations)
+        const expenseRef = doc(db, `wallet/${userId}/expenses/${expenseId}`)
+        const oldSummaryRef = doc(db, `wallet/${userId}/summaries/${updatedExpense.oldYearMonth}`)
+        const newSummaryRef = doc(db, `wallet/${userId}/summaries/${updatedExpense.yearMonth}`)
+        
+        // Get the original expense to check for category changes
+        const expenseDoc = await transaction.get(expenseRef)
+        if (!expenseDoc.exists()) {
+          throw new Error('Expense not found')
+        }
+        const originalExpense = expenseDoc.data() as Expense
+        
+        // Read the summaries
+        const oldSummaryDoc = await transaction.get(oldSummaryRef)
+        let newSummaryDoc = oldSummaryDoc
+        
+        // If month changed, get the new month's summary
+        const monthChanged = updatedExpense.oldYearMonth !== updatedExpense.yearMonth
+        if (monthChanged) {
+          newSummaryDoc = await transaction.get(newSummaryRef)
+        }
+
+        if (!oldSummaryDoc.exists()) {
+          throw new Error('Original monthly summary not found')
+        }
+
+        // 2. Prepare the updates
+        const oldSummary = oldSummaryDoc.data() as MonthlySummary
+        const oldDaysInMonth = new Date(
+          parseInt(updatedExpense.oldYearMonth.slice(0, 4)),
+          parseInt(updatedExpense.oldYearMonth.slice(5, 7)),
+          0
+        ).getDate()
+
+        // Update the expense document first
+        const expenseData = {
+          category: updatedExpense.category,
+          name: updatedExpense.name,
+          quantity: updatedExpense.quantity,
+          unit: updatedExpense.unit,
+          amount: updatedExpense.amount,
+          description: updatedExpense.description,
+          date: updatedExpense.date,
+          yearMonth: updatedExpense.yearMonth,
+          day: updatedExpense.day
+        }
+        transaction.update(expenseRef, expenseData)
+
+        // 3. Handle monthly summary updates
+        if (monthChanged) {
+          // Handle old month summary (decrease)
+          const oldUpdates: Partial<MonthlySummary> = {
+            totalAmount: oldSummary.totalAmount - originalExpense.amount,
+            expenseCount: oldSummary.expenseCount - 1,
+            avgPerDay: (oldSummary.totalAmount - originalExpense.amount) / oldDaysInMonth
+          }
+
+          // Update category breakdown for old month using original category
+          const oldCategoryAmount = (oldSummary.categoryBreakdown[originalExpense.category] || 0) - originalExpense.amount
+          if (oldCategoryAmount <= 0) {
+            const newCategoryBreakdown = { ...oldSummary.categoryBreakdown }
+            delete newCategoryBreakdown[originalExpense.category]
+            oldUpdates.categoryBreakdown = newCategoryBreakdown
+          } else {
+            oldUpdates.categoryBreakdown = {
+              ...oldSummary.categoryBreakdown,
+              [originalExpense.category]: oldCategoryAmount
+            }
+          }
+          transaction.update(oldSummaryRef, oldUpdates)
+
+          // Handle new month summary (increase)
+          const newDaysInMonth = new Date(
+            parseInt(updatedExpense.yearMonth.slice(0, 4)),
+            parseInt(updatedExpense.yearMonth.slice(5, 7)),
+            0
+          ).getDate()
+
+          if (newSummaryDoc.exists()) {
+            // Update existing summary
+            const newSummary = newSummaryDoc.data() as MonthlySummary
+            const newUpdates: Partial<MonthlySummary> = {
+              totalAmount: newSummary.totalAmount + updatedExpense.amount,
+              expenseCount: newSummary.expenseCount + 1,
+              avgPerDay: (newSummary.totalAmount + updatedExpense.amount) / newDaysInMonth,
+              categoryBreakdown: {
+                ...newSummary.categoryBreakdown,
+                [updatedExpense.category]: (newSummary.categoryBreakdown[updatedExpense.category] || 0) + updatedExpense.amount
+              }
+            }
+            transaction.update(newSummaryRef, newUpdates)
+          } else {
+            // Create new summary for the new month
+            const newSummary: MonthlySummary = {
+              totalAmount: updatedExpense.amount,
+              categoryBreakdown: {
+                [updatedExpense.category]: updatedExpense.amount
+              },
+              expenseCount: 1,
+              avgPerDay: updatedExpense.amount / newDaysInMonth
+            }
+            transaction.set(newSummaryRef, newSummary)
+          }
+        } else {
+          // Same month update - handle category changes
+          const updates: Partial<MonthlySummary> = {
+            totalAmount: oldSummary.totalAmount - originalExpense.amount + updatedExpense.amount,
+            avgPerDay: (oldSummary.totalAmount - originalExpense.amount + updatedExpense.amount) / oldDaysInMonth,
+          }
+
+          // Update category breakdown
+          const newCategoryBreakdown = { ...oldSummary.categoryBreakdown }
+          
+          // Remove amount from old category
+          const oldCategoryAmount = (newCategoryBreakdown[originalExpense.category] || 0) - originalExpense.amount
+          if (oldCategoryAmount <= 0) {
+            delete newCategoryBreakdown[originalExpense.category]
+          } else {
+            newCategoryBreakdown[originalExpense.category] = oldCategoryAmount
+          }
+
+          // Add amount to new category
+          newCategoryBreakdown[updatedExpense.category] = (newCategoryBreakdown[updatedExpense.category] || 0) + updatedExpense.amount
+
+          updates.categoryBreakdown = newCategoryBreakdown
+          transaction.update(oldSummaryRef, updates)
+        }
+      })
+
+    } catch (error) {
+      console.error('Error updating expense:', error)
+      throw error
+    }
+  } else {
+    throw new Error('Cannot update expenses while offline')
+  }
 } 
