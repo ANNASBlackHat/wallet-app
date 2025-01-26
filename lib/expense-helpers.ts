@@ -269,48 +269,57 @@ export async function deleteExpense(userId: string, expenseId: string, expense: 
         const expenseRef = doc(db, `wallet/${userId}/expenses/${expenseId}`)
         const summaryRef = doc(db, `wallet/${userId}/summaries/${expense.yearMonth}`)
         
-        // Read the monthly summary first
-        const summaryDoc = await transaction.get(summaryRef)
+        // Get the original expense to ensure we have the correct data
+        const expenseDoc = await transaction.get(expenseRef)
+        if (!expenseDoc.exists()) {
+          throw new Error('Expense not found')
+        }
+        const originalExpense = expenseDoc.data() as Expense
         
+        // Read the monthly summary
+        const summaryDoc = await transaction.get(summaryRef)
         if (!summaryDoc.exists()) {
           throw new Error('Monthly summary not found')
         }
 
-        // 2. Then perform all write operations
+        // 2. Prepare the updates
         const currentSummary = summaryDoc.data() as MonthlySummary
         const daysInMonth = new Date(
-          parseInt(expense.yearMonth.slice(0, 4)),
-          parseInt(expense.yearMonth.slice(5, 7)),
+          parseInt(originalExpense.yearMonth.slice(0, 4)),
+          parseInt(originalExpense.yearMonth.slice(5, 7)),
           0
         ).getDate()
 
-        // Calculate new values
-        const newTotalAmount = currentSummary.totalAmount - expense.amount
-        const newCategoryAmount = (currentSummary.categoryBreakdown[expense.category] || 0) - expense.amount
+        // Calculate new values using original expense data
+        const newTotalAmount = currentSummary.totalAmount - originalExpense.amount
+        const newCategoryAmount = (currentSummary.categoryBreakdown[originalExpense.category] || 0) - originalExpense.amount
         
         // Create update object
         const updates: Partial<MonthlySummary> = {
           totalAmount: newTotalAmount,
-          expenseCount: currentSummary.expenseCount - 1,
+          expenseCount: Math.max(0, currentSummary.expenseCount - 1), // Ensure we don't go below 0
           avgPerDay: newTotalAmount / daysInMonth,
         }
 
-        // If category amount becomes 0, remove the category, otherwise update it
+        // Update category breakdown
+        const newCategoryBreakdown = { ...currentSummary.categoryBreakdown }
+        
+        // If category amount becomes 0 or negative, remove the category
         if (newCategoryAmount <= 0) {
-          // Create a new categoryBreakdown without the deleted category
-          const newCategoryBreakdown = { ...currentSummary.categoryBreakdown }
-          delete newCategoryBreakdown[expense.category]
-          updates.categoryBreakdown = newCategoryBreakdown
+          delete newCategoryBreakdown[originalExpense.category]
         } else {
-          updates.categoryBreakdown = {
-            ...currentSummary.categoryBreakdown,
-            [expense.category]: newCategoryAmount
-          }
+          newCategoryBreakdown[originalExpense.category] = newCategoryAmount
         }
+        
+        updates.categoryBreakdown = newCategoryBreakdown
 
-        // Perform all writes after all reads
+        // 3. Perform all writes after all reads
         transaction.delete(expenseRef)
-        transaction.update(summaryRef, updates)
+        
+        // Only update summary if there are changes
+        if (Object.keys(updates).length > 0) {
+          transaction.update(summaryRef, updates)
+        }
       })
 
     } catch (error) {
