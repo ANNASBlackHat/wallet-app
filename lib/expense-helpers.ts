@@ -11,6 +11,7 @@ import {
   getDocs,
   addDoc
 } from 'firebase/firestore'
+import { addPendingExpense, getPendingExpenses, updateExpenseStatus, deletePendingExpense } from './offline-storage'
 
 interface Expense {
   category: string
@@ -45,6 +46,11 @@ interface CategoryCache {
 // Global cache object
 let categoryCache: CategoryCache | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+// Function to check online status
+function isOnline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine;
+}
 
 export async function getUserCategories(userId: string): Promise<string[]> {
   console.log('🔍 Fetching user categories for:', userId)
@@ -186,10 +192,132 @@ export async function handleManualSubmit({
     day: now.getDate()
   }
 
-  const db = getFirestore()
-  // Add to expenses collection
-  await addDoc(collection(db, `wallet/${userId}/expenses`), expenseData)
+  // Check if we're online
+  if (isOnline()) {
+    try {
+      const db = getFirestore()
+      // Add to expenses collection
+      await addDoc(collection(db, `wallet/${userId}/expenses`), expenseData)
+      // Update monthly summary
+      await updateMonthlySummary(userId, expenseData)
+    } catch (error) {
+      console.error('Error adding expense online:', error)
+      // If online submission fails, store offline
+      await addPendingExpense({
+        ...expenseData,
+        userId,
+        date: expenseData.date instanceof Date ? expenseData.date : new Date(expenseData.date.toMillis())
+      })
+      throw new Error('Failed to add expense online, saved offline')
+    }
+  } else {
+    // Store offline
+    await addPendingExpense({
+      ...expenseData,
+      userId,
+      date: expenseData.date instanceof Date ? expenseData.date : new Date(expenseData.date.toMillis())
+    })
+  }
+}
 
-  // Update monthly summary
-  await updateMonthlySummary(userId, expenseData)
+// Function to sync pending expenses
+export async function syncPendingExpenses(userId: string): Promise<void> {
+  if (!isOnline()) return;
+
+  const pendingExpenses = await getPendingExpenses(userId);
+  
+  for (const expense of pendingExpenses) {
+    if (expense.status === 'pending') {
+      try {
+        await updateExpenseStatus(expense.id!, 'syncing');
+        
+        const db = getFirestore();
+        await addDoc(collection(db, `wallet/${userId}/expenses`), {
+          category: expense.category,
+          name: expense.name,
+          quantity: expense.quantity,
+          unit: expense.unit,
+          amount: expense.amount,
+          description: expense.description,
+          date: expense.date,
+          yearMonth: expense.yearMonth,
+          day: expense.day
+        });
+
+        await updateMonthlySummary(userId, expense);
+        await deletePendingExpense(expense.id!);
+      } catch (error) {
+        console.error('Error syncing expense:', error);
+        await updateExpenseStatus(expense.id!, 'error', error instanceof Error ? error.message : 'Unknown error');
+      }
+    }
+  }
+}
+
+export async function deleteExpense(userId: string, expenseId: string, expense: Expense): Promise<void> {
+  if (!userId) throw new Error('User ID is required')
+  if (!expenseId) throw new Error('Expense ID is required')
+
+  // Check if we're online
+  if (isOnline()) {
+    try {
+      const db = getFirestore()
+      
+      // Start a transaction to ensure data consistency
+      await runTransaction(db, async (transaction) => {
+        // 1. First, get all necessary documents (READ operations)
+        const expenseRef = doc(db, `wallet/${userId}/expenses/${expenseId}`)
+        const summaryRef = doc(db, `wallet/${userId}/summaries/${expense.yearMonth}`)
+        
+        // Read the monthly summary first
+        const summaryDoc = await transaction.get(summaryRef)
+        
+        if (!summaryDoc.exists()) {
+          throw new Error('Monthly summary not found')
+        }
+
+        // 2. Then perform all write operations
+        const currentSummary = summaryDoc.data() as MonthlySummary
+        const daysInMonth = new Date(
+          parseInt(expense.yearMonth.slice(0, 4)),
+          parseInt(expense.yearMonth.slice(5, 7)),
+          0
+        ).getDate()
+
+        // Calculate new values
+        const newTotalAmount = currentSummary.totalAmount - expense.amount
+        const newCategoryAmount = (currentSummary.categoryBreakdown[expense.category] || 0) - expense.amount
+        
+        // Create update object
+        const updates: Partial<MonthlySummary> = {
+          totalAmount: newTotalAmount,
+          expenseCount: currentSummary.expenseCount - 1,
+          avgPerDay: newTotalAmount / daysInMonth,
+        }
+
+        // If category amount becomes 0, remove the category, otherwise update it
+        if (newCategoryAmount <= 0) {
+          // Create a new categoryBreakdown without the deleted category
+          const newCategoryBreakdown = { ...currentSummary.categoryBreakdown }
+          delete newCategoryBreakdown[expense.category]
+          updates.categoryBreakdown = newCategoryBreakdown
+        } else {
+          updates.categoryBreakdown = {
+            ...currentSummary.categoryBreakdown,
+            [expense.category]: newCategoryAmount
+          }
+        }
+
+        // Perform all writes after all reads
+        transaction.delete(expenseRef)
+        transaction.update(summaryRef, updates)
+      })
+
+    } catch (error) {
+      console.error('Error deleting expense:', error)
+      throw error
+    }
+  } else {
+    throw new Error('Cannot delete expenses while offline')
+  }
 } 

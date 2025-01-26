@@ -17,6 +17,7 @@ import {
 import { startOfMonth, endOfMonth, subMonths, format, startOfDay, endOfDay } from 'date-fns'
 
 interface Expense {
+  id: string
   category: string
   name: string
   quantity: number
@@ -104,7 +105,10 @@ export async function fetchDashboardData(
   )
 
   const expensesSnapshot = await getDocs(rangeExpensesQuery)
-  const expenses = expensesSnapshot.docs.map(doc => doc.data() as Expense)
+  const expenses = expensesSnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as Expense))
 
   // Calculate totals and breakdowns for the selected range
   let totalAmount = 0

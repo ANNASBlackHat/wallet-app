@@ -116,7 +116,10 @@ export default function DashboardPage() {
             </div>
 
             {/* Recent Transactions */}
-            <RecentTransactions data={dashboardData.recentExpenses} />
+            <RecentTransactions 
+              data={dashboardData.recentExpenses} 
+              onDelete={loadDashboardData}
+            />
           </>
         ) : null}
 
