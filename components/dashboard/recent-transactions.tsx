@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
-import { ChevronDown, Trash2, Loader2, Pencil } from "lucide-react"
+import { ChevronDown, Trash2, Loader2, Pencil, Download } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -105,14 +105,90 @@ export function RecentTransactions({ data, onDelete, onEdit }: RecentTransaction
     }
   }
 
+  const handleExport = () => {
+    try {
+      // Define CSV headers
+      const headers = ['Date', 'Category', 'Name', 'Quantity', 'Unit', 'Amount', 'Description']
+      
+      // Convert data to CSV format
+      const csvData = data.map(expense => [
+        format(expense.date.toDate(), 'yyyy-MM-dd HH:mm:ss'),
+        expense.category,
+        expense.name,
+        expense.quantity,
+        expense.unit,
+        expense.amount,
+        expense.description
+      ])
+
+      // Add headers to the beginning
+      csvData.unshift(headers)
+
+      // Convert to CSV string
+      const csvString = csvData.map(row => row.map(cell => {
+        // Handle cells that might contain commas or quotes
+        if (cell && typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))) {
+          return `"${cell.replace(/"/g, '""')}"`
+        }
+        return cell
+      }).join(',')).join('\n')
+
+      // Create blob and download
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      
+      link.setAttribute('href', url)
+      link.setAttribute('download', `expenses-${format(new Date(), 'yyyy-MM-dd')}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Success",
+        description: "Your expenses have been exported successfully.",
+      })
+    } catch (error) {
+      console.error('Error exporting data:', error)
+      toast({
+        title: "Error",
+        description: "Failed to export expenses. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   console.log(`hasMoreItems: ${hasMoreItems}, itemsToShow: ${itemsToShow}, length: ${data.length}`)
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Recent Transactions</CardTitle>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExport}
+          className="hidden sm:flex"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export
+        </Button>
       </CardHeader>
       <CardContent>
+        {/* Mobile export button */}
+        <div className="mb-4 sm:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            className="w-full"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export Transactions
+          </Button>
+        </div>
+
         <Table>
           <TableHeader>
             <TableRow>

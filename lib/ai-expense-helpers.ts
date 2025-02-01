@@ -93,14 +93,7 @@ async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseDa
   } catch (error) {
     console.error('Error parsing expense:', error);
     // Return mock data as fallback
-    return [{
-      name: "Office Supplies",
-      category: "stationery",
-      quantity: 50,
-      unit: "pieces",
-      total: 1500,
-      description: "Monthly paper and pen supplies for the office"
-    }];
+    return [];
   }
 }
 
