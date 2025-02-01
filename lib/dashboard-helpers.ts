@@ -215,10 +215,20 @@ export async function fetchCategoryTrends(
     }
   }
   
-  // Fill in missing months with zero amounts
-  Object.keys(trends).forEach(category => {
-    trends[category] = trends[category]
-      .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+  // Fill in missing months with zero amounts and ensure proper ordering
+  const allCategories = Object.keys(trends)
+  const allMonths = Array.from({ length: months }, (_, i) => 
+    format(subMonths(currentDate, i), 'MMM yyyy')
+  ).reverse()
+
+  allCategories.forEach(category => {
+    const categoryData = trends[category]
+    const monthMap = new Map(categoryData.map(item => [item.month, item.amount]))
+    
+    trends[category] = allMonths.map(month => ({
+      month,
+      amount: monthMap.get(month) || 0
+    }))
   })
   
   return trends

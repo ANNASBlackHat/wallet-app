@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartCard } from "@/components/dashboard/chart-card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
@@ -10,7 +10,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/use-toast"
@@ -159,12 +158,13 @@ export function RecentTransactions({ data, onDelete, onEdit }: RecentTransaction
     }
   }
 
-  console.log(`hasMoreItems: ${hasMoreItems}, itemsToShow: ${itemsToShow}, length: ${data.length}`)
-
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Recent Transactions</CardTitle>
+    <ChartCard 
+      title="Recent Transactions"
+      description="Your latest expenses and transactions"
+      collapsible
+      fullHeight
+      action={
         <Button
           variant="outline"
           size="sm"
@@ -174,38 +174,45 @@ export function RecentTransactions({ data, onDelete, onEdit }: RecentTransaction
           <Download className="h-4 w-4 mr-2" />
           Export
         </Button>
-      </CardHeader>
-      <CardContent>
-        {/* Mobile export button */}
-        <div className="mb-4 sm:hidden">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            className="w-full"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export Transactions
-          </Button>
-        </div>
+      }
+    >
+      {/* Mobile export button */}
+      <div className="mb-4 sm:hidden">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExport}
+          className="w-full"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export Transactions
+        </Button>
+      </div>
 
+      <div className="overflow-x-auto -mx-4 px-4">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Category</TableHead>
+              <TableHead className="w-[120px]">Date</TableHead>
+              <TableHead className="w-[100px]">Category</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="text-right w-[120px]">Amount</TableHead>
               <TableHead className="w-[100px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.slice(0, itemsToShow).map((expense) => (
+            {data.slice(0, itemsToShow).map(expense => (
               <TableRow key={expense.id}>
-                <TableCell>{formatDate(expense.date)}</TableCell>
-                <TableCell>{expense.category}</TableCell>
-                <TableCell>{expense.name}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="whitespace-nowrap">
+                  {formatDate(expense.date)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {expense.category}
+                </TableCell>
+                <TableCell className="max-w-[200px] truncate">
+                  {expense.name}
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap">
                   {new Intl.NumberFormat('id-ID', {
                     style: 'currency',
                     currency: 'IDR'
@@ -218,6 +225,7 @@ export function RecentTransactions({ data, onDelete, onEdit }: RecentTransaction
                       size="icon"
                       onClick={() => handleEditClick(expense)}
                       disabled={deletingId === expense.id}
+                      className="h-8 w-8"
                     >
                       <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
                     </Button>
@@ -226,6 +234,7 @@ export function RecentTransactions({ data, onDelete, onEdit }: RecentTransaction
                       size="icon"
                       onClick={() => handleDeleteClick(expense)}
                       disabled={deletingId === expense.id}
+                      className="h-8 w-8"
                     >
                       {deletingId === expense.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -239,66 +248,66 @@ export function RecentTransactions({ data, onDelete, onEdit }: RecentTransaction
             ))}
           </TableBody>
         </Table>
-        
-        {hasMoreItems && (
-          <div className="mt-4 flex justify-center">
+      </div>
+      
+      {hasMoreItems && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            variant="outline"
+            onClick={handleShowMore}
+            className="w-full sm:w-auto"
+          >
+            <ChevronDown className="mr-2 h-4 w-4" />
+            Show More
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Expense</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this expense? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
             <Button
               variant="outline"
-              onClick={handleShowMore}
-              className="w-full sm:w-auto"
+              onClick={() => setIsDeleteDialogOpen(false)}
             >
-              <ChevronDown className="mr-2 h-4 w-4" />
-              Show More
+              Cancel
             </Button>
-          </div>
-        )}
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={!selectedExpense || !!deletingId}
+            >
+              {deletingId ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete Expense</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete this expense? This action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsDeleteDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleDeleteConfirm}
-                disabled={!selectedExpense || !!deletingId}
-              >
-                {deletingId ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  'Delete'
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Dialog */}
-        {selectedExpense && (
-          <EditExpenseDialog
-            expense={selectedExpense}
-            open={isEditDialogOpen}
-            onOpenChange={setIsEditDialogOpen}
-            onSuccessfulEdit={() => {
-              onEdit?.()
-              setSelectedExpense(null)
-            }}
-          />
-        )}
-      </CardContent>
-    </Card>
+      {/* Edit Dialog */}
+      {selectedExpense && (
+        <EditExpenseDialog
+          expense={selectedExpense}
+          open={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          onSuccessfulEdit={() => {
+            onEdit?.()
+            setSelectedExpense(null)
+          }}
+        />
+      )}
+    </ChartCard>
   )
 } 

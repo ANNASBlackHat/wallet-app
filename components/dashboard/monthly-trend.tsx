@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartCard } from "@/components/dashboard/chart-card"
 import { SkeletonChart } from "./skeleton-chart"
 import { useEffect, useState } from "react"
 import { fetchMonthlyComparison } from "@/lib/dashboard-helpers"
@@ -36,37 +36,33 @@ export function MonthlyTrend({ userId, selectedDate }: MonthlyTrendProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Monthly Trend</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
-              <XAxis dataKey="month" />
-              <YAxis 
-                tickFormatter={(value) => 
-                  new Intl.NumberFormat('id-ID', {
-                    notation: 'compact',
-                    compactDisplay: 'short',
-                    currency: 'IDR'
-                  }).format(value)
-                }
-              />
-              <Tooltip
-                formatter={(value: number) => 
-                  new Intl.NumberFormat('id-ID', {
-                    style: 'currency',
-                    currency: 'IDR'
-                  }).format(value)
-                }
-              />
-              <Bar dataKey="total" fill="#8884d8" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-    </Card>
+    <ChartCard 
+      title="Monthly Trend" 
+      description="Monthly spending comparison"
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data}>
+          <XAxis dataKey="month" />
+          <YAxis 
+            tickFormatter={(value) => 
+              new Intl.NumberFormat('id-ID', {
+                notation: 'compact',
+                compactDisplay: 'short',
+                currency: 'IDR'
+              }).format(value)
+            }
+          />
+          <Tooltip
+            formatter={(value: number) => 
+              new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR'
+              }).format(value)
+            }
+          />
+          <Bar dataKey="total" fill="#8884d8" />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
   )
 } 

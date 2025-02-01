@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { MetricCard } from "@/components/dashboard/metric-card"
 
 interface DailyTotal {
   day: number
@@ -16,21 +16,16 @@ export function DailyAverageCard({ data }: DailyAverageCardProps) {
   const averageDaily = data.length > 0 ? totalSpending / data.length : 0
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">Daily Average</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">
-          {new Intl.NumberFormat('id-ID', {
-            style: 'currency',
-            currency: 'IDR'
-          }).format(averageDaily)}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Average daily spending for the period
-        </p>
-      </CardContent>
-    </Card>
+    <MetricCard title="Daily Average">
+      <div className="text-2xl font-bold">
+        {new Intl.NumberFormat('id-ID', {
+          style: 'currency',
+          currency: 'IDR'
+        }).format(averageDaily)}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Average daily spending for the period
+      </p>
+    </MetricCard>
   )
 } 

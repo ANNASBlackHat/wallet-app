@@ -2,19 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/auth-context'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EnhancedDateRangePicker } from '@/components/enhanced-date-range-picker'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, XAxis, YAxis, Bar, LineChart, Line } from 'recharts'
 import { AddExpenseDialog } from '@/components/add-expense-dialog'
 import { AuthGuard } from '@/components/auth-guard'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from 'lucide-react'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { fetchDashboardData, fetchMonthlyComparison, fetchCategoryTrends, type DashboardData } from '@/lib/dashboard-helpers'
 
 // Import dashboard components
+import { DashboardContainer, DashboardMetricsSection, DashboardChartsSection, DashboardInsightsSection, DashboardFullWidthSection } from '@/components/dashboard/dashboard-container'
 import { TotalSpendingCard } from '@/components/dashboard/total-spending-card'
 import { DailyAverageCard } from '@/components/dashboard/daily-average-card'
 import { CategoryBreakdown } from '@/components/dashboard/category-breakdown'
@@ -65,7 +62,8 @@ export default function DashboardPage() {
 
   return (
     <AuthGuard>
-      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <DashboardContainer>
+        {/* Header with Date Range Picker */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
           <EnhancedDateRangePicker
@@ -87,8 +85,8 @@ export default function DashboardPage() {
           </div>
         ) : dashboardData ? (
           <>
-            {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {/* Key Metrics */}
+            <DashboardMetricsSection>
               <TotalSpendingCard 
                 total={dashboardData.currentMonthTotal}
                 previousTotal={dashboardData.previousMonthTotal}
@@ -97,39 +95,41 @@ export default function DashboardPage() {
               <DailyAverageCard 
                 data={dashboardData.dailyTotals}
               />
-            </div>
+            </DashboardMetricsSection>
 
-            {/* Charts */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-              <div className="col-span-4">
-                <CategoryBreakdown data={dashboardData.categoryTotals} />
-              </div>
-              <div className="col-span-3">
-                {userId && (
-                  <MonthlyTrend userId={userId} selectedDate={dateRange.from} />
-                )}
-              </div>
-              <div className="col-span-4">
-                <DailySpending data={dashboardData.dailyTotals} />
-              </div>
-              <div className="col-span-3">
-                {userId && (
-                  <CategoryTrends userId={userId} selectedDate={dateRange.from} />
-                )}
-              </div>
-            </div>
+            {/* Main Charts */}
+            <DashboardChartsSection>
+              <CategoryBreakdown data={dashboardData.categoryTotals} />
+              {userId && (
+                <MonthlyTrend userId={userId} selectedDate={dateRange.from} />
+              )}
+            </DashboardChartsSection>
+
+            {/* Detailed Charts */}
+            <DashboardFullWidthSection>
+              <DailySpending data={dashboardData.dailyTotals} />
+            </DashboardFullWidthSection>
+
+            {/* Category Trends */}
+            <DashboardFullWidthSection>
+              {userId && (
+                <CategoryTrends userId={userId} selectedDate={dateRange.from} />
+              )}
+            </DashboardFullWidthSection>
 
             {/* Recent Transactions */}
-            <RecentTransactions 
-              data={dashboardData.recentExpenses} 
-              onDelete={loadDashboardData}
-              onEdit={loadDashboardData}
-            />
+            <DashboardFullWidthSection>
+              <RecentTransactions 
+                data={dashboardData.recentExpenses} 
+                onDelete={loadDashboardData}
+                onEdit={loadDashboardData}
+              />
+            </DashboardFullWidthSection>
           </>
         ) : null}
 
         <AddExpenseDialog onSuccessfulSubmit={loadDashboardData} />
-      </div>
+      </DashboardContainer>
     </AuthGuard>
   )
 }
