@@ -1,17 +1,23 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { format, subMonths } from 'date-fns'
 
 interface DailyTotal {
   day: number
   total: number
   avgAmount: number
+  lastMonthTotal: number
 }
 
 interface DailySpendingProps {
   data: DailyTotal[]
+  selectedDate: Date
 }
 
-export function DailySpending({ data }: DailySpendingProps) {
+export function DailySpending({ data, selectedDate }: DailySpendingProps) {
+  const currentMonth = format(selectedDate, 'MMMM yyyy')
+  const lastMonth = format(subMonths(selectedDate, 1), 'MMMM yyyy')
+
   return (
     <Card>
       <CardHeader>
@@ -32,15 +38,42 @@ export function DailySpending({ data }: DailySpendingProps) {
                 }
               />
               <Tooltip
-                formatter={(value: number) => 
+                formatter={(value: number, name: string) => [
                   new Intl.NumberFormat('id-ID', {
                     style: 'currency',
                     currency: 'IDR'
-                  }).format(value)
-                }
+                  }).format(value),
+                  name === `${currentMonth} Total` ? `${currentMonth} Total` :
+                  name === `${lastMonth} Total` ? `${lastMonth} Total` :
+                  'Daily Average'
+                ]}
+                labelFormatter={(label) => `Day ${label}`}
               />
-              <Line type="monotone" dataKey="total" stroke="#8884d8" name="Total" />
-              <Line type="monotone" dataKey="avgAmount" stroke="#82ca9d" name="Average" />
+              <Legend />
+              <Line 
+                type="monotone" 
+                dataKey="total" 
+                stroke="#8884d8" 
+                name={`${currentMonth} Total`}
+                strokeWidth={2}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="lastMonthTotal" 
+                stroke="#d3d3d3"
+                name={`${lastMonth} Total`}
+                strokeDasharray="5 5"
+                strokeWidth={1.5}
+                opacity={0.7}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="avgAmount" 
+                stroke="#ffc658" 
+                name="Daily Average"
+                dot={false}
+                strokeWidth={1}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>

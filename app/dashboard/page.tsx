@@ -110,7 +110,10 @@ export default function DashboardPage() {
                 )}
               </div>
               <div className="col-span-4">
-                <DailySpending data={dashboardData.dailyTotals} />
+                <DailySpending 
+                  data={dashboardData.dailyTotals} 
+                  selectedDate={dateRange.from}
+                />
               </div>
               <div className="col-span-3">
                 {userId && (

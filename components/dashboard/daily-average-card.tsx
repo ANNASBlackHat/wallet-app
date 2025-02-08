@@ -4,6 +4,7 @@ interface DailyTotal {
   day: number
   total: number
   avgAmount: number
+  lastMonthTotal: number
 }
 
 interface DailyAverageCardProps {

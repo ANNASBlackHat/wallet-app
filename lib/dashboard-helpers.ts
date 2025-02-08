@@ -39,6 +39,7 @@ interface DailyTotal {
   day: number
   total: number
   avgAmount: number
+  lastMonthTotal: number
 }
 
 interface MonthlySummary {
@@ -81,6 +82,10 @@ export async function fetchDashboardData(
   const currentMonth = format(dateRange.from, 'yyyy-MM')
   const previousMonth = format(subMonths(dateRange.from, 1), 'yyyy-MM')
 
+  // Get previous month's date range for comparison
+  const previousMonthStart = startOfDay(subMonths(dateRange.from, 1))
+  const previousMonthEnd = endOfDay(subMonths(dateRange.to, 1))
+
   // 1. Get current month's summary for reference
   const currentMonthSummaryRef = doc(db, `wallet/${userId}/summaries/${currentMonth}`)
   const currentMonthSummaryDoc = await getDoc(currentMonthSummaryRef)
@@ -104,8 +109,26 @@ export async function fetchDashboardData(
     orderBy('date', 'desc')
   )
 
-  const expensesSnapshot = await getDocs(rangeExpensesQuery)
+  // 4. Get previous month's expenses for comparison
+  const previousMonthExpensesQuery = query(
+    expensesRef,
+    where('date', '>=', Timestamp.fromDate(previousMonthStart)),
+    where('date', '<=', Timestamp.fromDate(previousMonthEnd)),
+    orderBy('date', 'desc')
+  )
+
+  // Fetch both current and previous month's expenses
+  const [expensesSnapshot, previousExpensesSnapshot] = await Promise.all([
+    getDocs(rangeExpensesQuery),
+    getDocs(previousMonthExpensesQuery)
+  ])
+
   const expenses = expensesSnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as Expense))
+
+  const previousExpenses = previousExpensesSnapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   } as Expense))
@@ -114,7 +137,9 @@ export async function fetchDashboardData(
   let totalAmount = 0
   const categoryBreakdown: { [key: string]: number } = {}
   const dailyTotals: { [key: number]: { total: number; count: number } } = {}
+  const previousDailyTotals: { [key: number]: number } = {}
 
+  // Process current month's expenses
   expenses.forEach(expense => {
     totalAmount += expense.amount
     categoryBreakdown[expense.category] = (categoryBreakdown[expense.category] || 0) + expense.amount
@@ -127,6 +152,12 @@ export async function fetchDashboardData(
     dailyTotals[day].count++
   })
 
+  // Process previous month's expenses
+  previousExpenses.forEach(expense => {
+    const day = expense.day
+    previousDailyTotals[day] = (previousDailyTotals[day] || 0) + expense.amount
+  })
+
   // Calculate category totals with percentages
   const categoryTotals: CategoryTotal[] = Object.entries(categoryBreakdown).map(([category, total]) => ({
     category,
@@ -134,11 +165,12 @@ export async function fetchDashboardData(
     percentage: totalAmount > 0 ? roundToTwo((total / totalAmount) * 100) : 0
   }))
 
-  // Format daily totals
+  // Format daily totals with previous month's data
   const formattedDailyTotals: DailyTotal[] = Object.entries(dailyTotals).map(([day, data]) => ({
     day: parseInt(day),
     total: data.total,
-    avgAmount: roundToTwo(data.total / data.count)
+    avgAmount: roundToTwo(data.total / data.count),
+    lastMonthTotal: previousDailyTotals[parseInt(day)] || 0
   }))
 
   return {
