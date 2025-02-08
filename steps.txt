@@ -1,0 +1,62 @@
+I'll analyze the Category Breakdown component and create a detailed plan for improving its UI to make it less messy. Looking at both the current implementation and the screenshots provided, here are the key observations and a step-by-step plan:
+
+Current Issues Identified:
+1. The legend items are overlapping and hard to read
+2. The pie chart labels are cluttered, especially with many categories
+3. The color scheme could be more consistent and accessible
+4. The pie chart size is relatively small (80px radius)
+5. The tooltip formatting could be improved
+6. Categories with very small percentages are hard to distinguish
+
+Step-by-Step Implementation Plan:
+
+1. Legend Optimization
+   - Move the legend to the bottom of the chart
+   - Implement a multi-line, wrapped legend layout
+   - Add proper spacing between legend items
+   - Use consistent color indicators for legend items
+
+2. Pie Chart Enhancement
+   - Increase the pie chart size for better visibility
+   - Implement a minimum threshold for slice visibility (e.g., group small categories into "Others")
+   - Add hover effects for better interactivity
+   - Implement smooth animations for better UX
+
+3. Label Improvements
+   - Remove direct labels from small slices to reduce clutter
+   - Implement smart label positioning to prevent overlap
+   - Format percentages consistently (no decimal places)
+   - Add proper spacing between label components
+
+4. Color Scheme Updates
+   - Define a consistent and accessible color palette
+   - Ensure sufficient contrast between adjacent sections
+   - Use color gradients for related categories
+   - Maintain color consistency across the dashboard
+
+5. Tooltip Enhancements
+   - Add more detailed information in tooltips
+   - Improve tooltip formatting and styling
+   - Add category percentage to tooltip
+   - Implement custom tooltip component for better control
+
+6. Responsive Behavior
+   - Adjust chart size based on container width
+   - Implement responsive legend positioning
+   - Handle small screen sizes gracefully
+   - Maintain readability across different device sizes
+
+7. Data Processing
+   - Sort categories by value for better visualization
+   - Group small categories into "Others" category
+   - Calculate and display proper percentages
+   - Handle edge cases (empty data, single category)
+
+Technical Implementation Details:
+1. Update the `CategoryTotal` interface to include additional properties for enhanced visualization
+2. Create new utility functions for data processing
+3. Implement custom components for tooltip and legend
+4. Add configuration options for customization
+5. Implement proper TypeScript types for all new features
+
+Would you like me to proceed with implementing any specific part of this plan? I can start with the most critical improvements first, or we can tackle them in the order you prefer.
