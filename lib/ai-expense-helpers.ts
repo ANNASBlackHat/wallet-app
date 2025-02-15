@@ -107,7 +107,13 @@ export async function handleAIExpenseSubmit(input: AIExpenseInput): Promise<void
   }
 
   // Parse the input using AI
-  const parsedExpenses = await parseExpenseInput(input)
+  let parsedExpenses;
+  try {
+    parsedExpenses = await parseExpenseInput(input);
+  } catch (error) {
+    console.error('Error parsing expense input:', error);
+    throw new Error('Failed to parse expense details. Please try again.');
+  }
 
   // Save each expense
   for (const expense of parsedExpenses) {
@@ -156,10 +162,20 @@ export async function handleAIExpenseSubmitByAPI({
     formData.append('image', selectedImage)
   }
 
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/wallet`, {
-    method: 'POST',
-    body: formData
-  })
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/wallet`, {
+      method: 'POST',
+      body: formData
+    })
 
-  if (!response.ok) throw new Error('Failed to submit expense to AI service')
+    console.log('response ok?: ', response.ok);
+    console.log('response: ', response)
+    
+    if (!response.ok) {
+      throw new Error('Failed to submit expense to AI service')
+    }
+  } catch (error) {
+    console.error('Error submitting expense:', error);
+    throw error;
+  }
 } 
