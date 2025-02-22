@@ -152,6 +152,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
+    console.log('Error:', error);
     console.error('AI Processing Error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to process expense' },
