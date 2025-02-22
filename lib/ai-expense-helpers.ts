@@ -97,7 +97,7 @@ async function parseExpenseInput(input: AIExpenseInput): Promise<ParsedExpenseDa
   }
 }
 
-export async function handleAIExpenseSubmit(input: AIExpenseInput): Promise<void> {
+export async function handleAIExpenseSubmit(input: AIExpenseInput): Promise<ParsedExpenseData[]> {
   if (!input.userId) {
     throw new Error('User ID is required')
   }
@@ -127,6 +127,8 @@ export async function handleAIExpenseSubmit(input: AIExpenseInput): Promise<void
       description: expense.description
     })
   }
+
+  return parsedExpenses;
 }
 
 export async function handleAIExpenseSubmitByAPI({

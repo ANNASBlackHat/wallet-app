@@ -512,7 +512,7 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
     }
     
     try {
-      await handleAIExpenseSubmit({
+      const parsedExpenses = await handleAIExpenseSubmit({
         userId,
         text: text || undefined,
         audioBlob: audioBlob || undefined,
@@ -520,9 +520,14 @@ export function AddExpenseDialog({ onSuccessfulSubmit }: AddExpenseDialogProps) 
         selectedImage: selectedImage || undefined
       })
 
+      // Create a summary of recorded items
+      const itemsSummary = parsedExpenses
+        .map(expense => `${expense.quantity} ${expense.unit} ${expense.name}`)
+        .join(', ')
+
       toast({
         title: "Success",
-        description: "Your expense has been recorded by AI"
+        description: `Recorded: ${itemsSummary}`
       })
 
       if (onSuccessfulSubmit) {
