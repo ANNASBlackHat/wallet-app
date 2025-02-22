@@ -172,7 +172,7 @@ function getPrompt(): string {
   - total: The total cost of the expense
   - description: The description of the expense
 
-  Your output should be in JSON format (array of objects). Example:
+  Your output should be in a valid JSON format (array of objects, do not add comment). Example:
   [
     {
       "name": "Makan Malam",
