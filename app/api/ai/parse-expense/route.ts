@@ -165,12 +165,12 @@ function getPrompt(): string {
   return `
   You are a helpful assistant that can parse and categorize expenses.
   You will be given a text, image, or transcribed audio of an expense and you will need to parse it and return the following:
-  - name: The name of the expense
-  - category: The category of the expense
-  - quantity: The quantity of the expense
-  - unit: The unit of the expense
-  - total: The total cost of the expense
-  - description: The description of the expense
+  - name: The name of the expense.
+  - category: The category of the expense (use lowercase format).
+  - quantity: The quantity of the expense.
+  - unit: The unit of the expense.
+  - total: The total cost of the expense.
+  - description: The description of the expense.
 
   Your output should be in a valid JSON format (array of objects, do not add comment). Example:
   [
